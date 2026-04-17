@@ -27,7 +27,7 @@ const ICON_PATH = path.join(__dirname, 'build', 'mesh3d-logo-icon_1-iOS-Default-
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const BAR_H      = 54;
-const SETTINGS_H = 300;
+const SETTINGS_H = 360;
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 
 const CODEC_MAP = {
@@ -162,7 +162,8 @@ async function nextBrowserTab() {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let win, view;
-let settingsOpen = false;
+let settingsOpen  = false;
+let shortcutsOpen = false;
 let recording    = false;
 let paused       = false;
 let scrolling    = false;
@@ -627,15 +628,27 @@ function toggleSettings() {
   notify('settings-state', settingsOpen);
 }
 
+// ─── Shortcuts modal ──────────────────────────────────────────────────────────
+// Hides the BrowserView so the full-window overlay in renderer HTML is visible.
+function toggleShortcuts() {
+  shortcutsOpen = !shortcutsOpen;
+  if (shortcutsOpen) {
+    view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  } else {
+    syncBounds();
+  }
+  notify('shortcuts-state', shortcutsOpen);
+}
+
 // ─── IPC ─────────────────────────────────────────────────────────────────────
 ipcMain.on('navigate',        (_, url) => navigate(url));
 ipcMain.on('screenshot',      ()       => screenshot());
 ipcMain.on('toggle-rec',      ()       => recording ? stopRec() : startRec());
 ipcMain.on('pause-rec',       ()       => pauseRec());
 ipcMain.on('toggle-scroll',   ()       => toggleScroll());
-ipcMain.on('reset-scroll',    ()       => resetScroll());
 ipcMain.on('refresh',         ()       => refresh());
-ipcMain.on('toggle-settings', ()       => toggleSettings());
+ipcMain.on('toggle-settings',   ()       => toggleSettings());
+ipcMain.on('toggle-shortcuts',  ()       => toggleShortcuts());
 ipcMain.on('open-path',       (_, p)   => shell.showItemInFolder(p));
 ipcMain.on('grab-url',        ()       => grabBrowserUrl());
 ipcMain.on('next-tab',        ()       => nextBrowserTab());
@@ -653,20 +666,12 @@ ipcMain.handle('pick-dir', async () => {
 });
 
 // ─── Global shortcuts ────────────────────────────────────────────────────────
+// Only truly global shortcuts here (work from other apps).
+// In-app shortcuts are handled by before-input-event on the BrowserView.
 function registerShortcuts() {
   const map = {
-    // Recording
-    'CommandOrControl+Shift+R': () => recording ? stopRec() : startRec(),
-    'CommandOrControl+Shift+P': pauseRec,
-    'CommandOrControl+Shift+M': screenshot,
-    // Scroll
-    'CommandOrControl+Shift+Down': toggleScroll,
-    'CommandOrControl+Shift+Up':   resetScroll,
-    'CommandOrControl+Shift+F':    refresh,
-    // Browser integration
-    'Control+G': grabBrowserUrl,   // Grab current browser tab URL
-    'Control+N': nextBrowserTab,   // Next browser tab → load in app
-    'Control+R': refresh,          // Refresh current page
+    'Control+G': grabBrowserUrl,  // grab URL from browser while in another app
+    'Control+N': nextBrowserTab,  // advance browser tab while in another app
   };
   for (const [key, fn] of Object.entries(map)) {
     try { globalShortcut.register(key, fn); } catch (e) {
@@ -675,11 +680,34 @@ function registerShortcuts() {
   }
 }
 
+// ─── In-app shortcuts via BrowserView key interception ───────────────────────
+// before-input-event fires before the page sees the keystroke, so we can
+// preventDefault() to stop the page reacting to R / S / Space etc.
+function setupViewShortcuts() {
+  view.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const { key, meta, control, shift, alt } = input;
+    const plain   = !meta && !control && !shift && !alt;
+    const cmdOnly = (meta || control) && !shift && !alt;
+
+    if (plain) {
+      if (key === ' ')                      { event.preventDefault(); toggleScroll(); }
+      else if (key === 'r' || key === 'R')  { event.preventDefault(); recording ? stopRec() : startRec(); }
+      else if (key === 's' || key === 'S')  { event.preventDefault(); screenshot(); }
+      else if (key === 'Escape')            { if (scrolling) { event.preventDefault(); stopScroll(); }
+                                              if (recording) { event.preventDefault(); stopRec(); } }
+    }
+    if (cmdOnly && (key === 'r' || key === 'R')) { event.preventDefault(); refresh(); }
+    if (cmdOnly && (key === 'k' || key === 'K')) { event.preventDefault(); toggleShortcuts(); }
+  });
+}
+
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   loadCfg();
   create();
   registerShortcuts();
+  setupViewShortcuts();
   navigate('mesh3d.gallery');
 });
 

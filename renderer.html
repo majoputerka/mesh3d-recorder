@@ -34,6 +34,7 @@
     overflow: hidden;
     user-select: none;
     -webkit-app-region: no-drag;
+    position: relative;
   }
 
   /* ── Control bar ─────────────────────────────────────────────────────── */
@@ -59,8 +60,13 @@
     min-width: 0;
     gap: 4px;
   }
-  #url-input {
+  .url-wrap {
+    position: relative;
     flex: 1;
+    min-width: 0;
+  }
+  #url-input {
+    width: 100%;
     height: 30px;
     background: #0a0a0a;
     border: 1px solid var(--border);
@@ -68,12 +74,34 @@
     color: var(--text-hi);
     font-family: var(--mono);
     font-size: 12px;
-    padding: 0 10px;
+    padding: 0 32px 0 10px;
     outline: none;
     transition: border-color 0.15s;
   }
   #url-input::placeholder { color: var(--text-dim); }
   #url-input:focus { border-color: var(--accent); }
+
+  /* Go button — lives inside the URL input */
+  #go-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, color 0.1s;
+  }
+  #go-btn:hover  { background: var(--hover); color: var(--text-hi); }
+  #go-btn:active { background: var(--active); }
 
   /* Generic buttons */
   button {
@@ -109,6 +137,9 @@
     flex-shrink: 0;
     margin: 0 2px;
   }
+
+  /* ── Screenshot button ───────────────────────────────────────────────── */
+  #shot-btn { min-width: 60px; gap: 6px; }
 
   /* ── Record button ───────────────────────────────────────────────────── */
   #rec-btn {
@@ -176,23 +207,27 @@
   }
   #speed-range:hover::-webkit-slider-thumb { background: var(--text-hi); }
 
-  /* ── Settings panel ──────────────────────────────────────────────────── */
+  /* ── Settings panel — overlays content, does not push it ─────────────── */
   #settings-panel {
+    position: absolute;
+    top: 54px;
+    left: 0;
+    right: 0;
+    z-index: 100;
     background: var(--bar);
     border-bottom: 1px solid var(--border);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.6);
     height: 0;
     overflow: hidden;
     transition: height 0.2s ease;
   }
-  #settings-panel.open { height: 300px; }
+  #settings-panel.open { height: 360px; }
 
   .settings-inner {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 20px;
     padding: 18px 20px;
-    height: 256px;
-    overflow-y: auto;
   }
 
   .s-section h4 {
@@ -314,6 +349,72 @@
     transform: translateX(-50%) translateY(0);
   }
   #toast.error { border-color: rgba(231,76,60,0.4); color: #ff7b6f; }
+
+  /* ── Shortcuts modal ─────────────────────────────────────────────────── */
+  #shortcuts-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  #shortcuts-modal.open { display: flex; }
+
+  .shortcuts-card {
+    background: #181818;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    padding: 24px 28px 20px;
+    min-width: 300px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+  }
+  .shortcuts-card h3 {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+  .sc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 32px;
+    padding: 7px 0;
+    border-bottom: 1px solid #222;
+  }
+  .sc-row:last-child { border-bottom: none; }
+  .sc-divider {
+    height: 1px;
+    background: #252525;
+    margin: 10px 0;
+  }
+  .sc-key {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-hi);
+    background: #242424;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid #333;
+    white-space: nowrap;
+  }
+  .sc-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .sc-hint {
+    font-size: 10px;
+    color: #3a3a3a;
+    text-align: center;
+    margin-top: 14px;
+    font-family: var(--mono);
+  }
 </style>
 </head>
 <body>
@@ -322,15 +423,36 @@
 <div id="bar">
   <div class="traffic-gap"></div>
 
-  <!-- URL -->
+  <!-- Refresh — lives before the URL input -->
+  <button id="refresh-btn" class="icon-btn" title="Refresh  ⌘⇧F">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+      <path d="M3 3v5h5"/>
+    </svg>
+  </button>
+
+  <!-- URL — go arrow is inside the input -->
   <div class="url-group">
-    <input id="url-input" type="text" placeholder="lusion.co" spellcheck="false" />
-    <button id="go-btn" class="icon-btn" title="Navigate (Enter)">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
+    <div class="url-wrap">
+      <input id="url-input" type="text" placeholder="lusion.co" spellcheck="false" />
+      <button id="go-btn" title="Navigate (Enter)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
   </div>
+
+  <div class="sep"></div>
+
+  <!-- Screenshot — first action button -->
+  <button id="shot-btn" title="Screenshot  ⌘⇧M">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+      <circle cx="12" cy="13" r="3"/>
+    </svg>
+    <span>SNAP</span>
+  </button>
 
   <div class="sep"></div>
 
@@ -340,9 +462,8 @@
     <span id="rec-label">REC</span>
   </button>
   <button id="pause-btn" class="icon-btn hidden" title="Pause / Resume  ⌘⇧P">
-    <svg id="pause-icon" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-      <rect x="1" y="1" width="3.5" height="10" rx="1"/>
-      <rect x="7.5" y="1" width="3.5" height="10" rx="1"/>
+    <svg id="pause-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
     </svg>
   </button>
   <span id="timer" class="hidden">0:00</span>
@@ -351,8 +472,8 @@
 
   <!-- Scroll -->
   <button id="scroll-btn" title="Toggle scroll  ⌘⇧↓">
-    <svg id="scroll-icon" width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-      <path d="M1 1l8 5-8 5V1z"/>
+    <svg id="scroll-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3"/>
     </svg>
     <span id="scroll-label">SCROLL</span>
   </button>
@@ -363,41 +484,16 @@
 
   <div class="sep"></div>
 
-  <!-- Utilities -->
-  <button id="top-btn" class="icon-btn" title="Reset to top  ⌘⇧↑">
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M7 10V4M3 6l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <line x1="2" y1="12" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-  </button>
-  <button id="refresh-btn" class="icon-btn" title="Refresh  ⌘⇧F">
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M12 7A5 5 0 1 1 7 2a5 5 0 0 1 3.54 1.46L12 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12 2v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </button>
-
-  <div class="sep"></div>
-
-  <button id="shot-btn" class="icon-btn" title="Screenshot  ⌘⇧M">
-    <svg width="15" height="14" viewBox="0 0 15 14" fill="none">
-      <rect x="1" y="3" width="13" height="10" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
-      <circle cx="7.5" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-      <path d="M5 3l1-2h3l1 2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-    </svg>
-  </button>
-
-  <div class="sep"></div>
-
+  <!-- Settings — Lucide cog icon -->
   <button id="cfg-btn" class="icon-btn" title="Settings">
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.4"/>
-      <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.93 2.93l1.06 1.06M10.01 10.01l1.06 1.06M2.93 11.07l1.06-1.06M10.01 3.99l1.06-1.06" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   </button>
 </div>
 
-<!-- ── Settings panel ──────────────────────────────────────────────────────── -->
+<!-- ── Settings panel — absolute overlay, does not push content ────────────── -->
 <div id="settings-panel">
   <div class="settings-inner">
 
@@ -471,17 +567,15 @@
     <div class="s-section">
       <h4>Shortcuts</h4>
       <div class="shortcuts-list">
-        <div><kbd>⌘⇧R</kbd> — Record start/stop</div>
-        <div><kbd>⌘⇧P</kbd> — Pause / resume</div>
-        <div><kbd>⌘⇧M</kbd> — Screenshot</div>
-        <div><kbd>⌘⇧↓</kbd> — Scroll toggle</div>
-        <div><kbd>⌘⇧↑</kbd> — Reset to top</div>
-        <div><kbd>⌘⇧F</kbd> — Refresh</div>
+        <div><kbd>Space</kbd> — Scroll toggle</div>
+        <div><kbd>R</kbd> — Record start/stop</div>
+        <div><kbd>S</kbd> — Screenshot</div>
+        <div><kbd>⌘R</kbd> — Refresh page</div>
+        <div><kbd>Esc</kbd> — Stop scroll &amp; rec</div>
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #252525"></div>
-        <div><kbd>^G</kbd> — Load URL from clipboard</div>
+        <div><kbd>^G</kbd> — Grab URL from browser</div>
         <div><kbd>^N</kbd> — Next browser tab</div>
-        <div><kbd>^R</kbd> — Refresh page</div>
-        <div style="font-size:10px;color:#444;margin-top:6px">For ^G: Cmd+L → Cmd+C in browser first</div>
+        <div style="font-size:10px;color:#444;margin-top:6px">^G / ^N work from any app</div>
       </div>
     </div>
 
@@ -490,6 +584,22 @@
   <div class="settings-footer">
     <button id="close-settings-btn">Cancel</button>
     <button id="apply-btn">Apply</button>
+  </div>
+</div>
+
+<!-- ── Shortcuts modal ──────────────────────────────────────────────────────── -->
+<div id="shortcuts-modal">
+  <div class="shortcuts-card">
+    <h3>Shortcuts</h3>
+    <div class="sc-row"><span class="sc-key">Space</span><span class="sc-desc">Toggle scroll</span></div>
+    <div class="sc-row"><span class="sc-key">R</span><span class="sc-desc">Record start / stop</span></div>
+    <div class="sc-row"><span class="sc-key">S</span><span class="sc-desc">Screenshot</span></div>
+    <div class="sc-row"><span class="sc-key">⌘R</span><span class="sc-desc">Refresh page</span></div>
+    <div class="sc-row"><span class="sc-key">Esc</span><span class="sc-desc">Stop scroll &amp; recording</span></div>
+    <div class="sc-divider"></div>
+    <div class="sc-row"><span class="sc-key">^G</span><span class="sc-desc">Grab URL from browser</span></div>
+    <div class="sc-row"><span class="sc-key">^N</span><span class="sc-desc">Next browser tab</span></div>
+    <p class="sc-hint">⌘K to close</p>
   </div>
 </div>
 
@@ -516,7 +626,6 @@ const scrollBtn   = document.getElementById('scroll-btn');
 const scrollIcon  = document.getElementById('scroll-icon');
 const scrollLabel = document.getElementById('scroll-label');
 const speedRange  = document.getElementById('speed-range');
-const topBtn      = document.getElementById('top-btn');
 const refreshBtn  = document.getElementById('refresh-btn');
 const shotBtn     = document.getElementById('shot-btn');
 const cfgBtn      = document.getElementById('cfg-btn');
@@ -590,10 +699,16 @@ window.api.on('rec-state', ({ recording, paused }) => {
   timerEl.classList.toggle('hidden', !recording);
   timerEl.classList.toggle('paused', paused);
 
-  // Swap pause icon between pause/play
-  pauseIcon.innerHTML = paused
-    ? '<path d="M2 1l10 5L2 11V1z" fill="currentColor"/>'
-    : '<rect x="1" y="1" width="3.5" height="10" rx="1"/><rect x="7.5" y="1" width="3.5" height="10" rx="1"/>';
+  // Swap pause icon: playing → pause bars, paused → play triangle
+  if (paused) {
+    pauseIcon.setAttribute('fill', 'currentColor');
+    pauseIcon.removeAttribute('stroke');
+    pauseIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  } else {
+    pauseIcon.setAttribute('fill', 'none');
+    pauseIcon.setAttribute('stroke', 'currentColor');
+    pauseIcon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+  }
   pauseBtn.classList.toggle('active', paused);
 });
 
@@ -609,7 +724,6 @@ window.api.on('recording-saved', filepath => {
 
 // ── Scroll ────────────────────────────────────────────────────────────────────
 scrollBtn.addEventListener('click', () => window.api.toggleScroll());
-topBtn.addEventListener('click',    () => window.api.resetScroll());
 refreshBtn.addEventListener('click',() => window.api.refresh());
 
 speedRange.addEventListener('input', () => {
@@ -619,9 +733,19 @@ speedRange.addEventListener('input', () => {
 window.api.on('scroll-state', active => {
   isScrolling = active;
   scrollBtn.classList.toggle('active', active);
-  scrollIcon.innerHTML = active
-    ? '<rect x="1" y="1" width="3.5" height="10" rx="1" fill="currentColor"/><rect x="5.5" y="1" width="3.5" height="10" rx="1" fill="currentColor"/>'
-    : '<path d="M1 1l8 5-8 5V1z" fill="currentColor"/>';
+  if (active) {
+    scrollIcon.setAttribute('fill', 'none');
+    scrollIcon.setAttribute('stroke', 'currentColor');
+    scrollIcon.setAttribute('stroke-width', '2');
+    scrollIcon.setAttribute('stroke-linecap', 'round');
+    scrollIcon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+  } else {
+    scrollIcon.setAttribute('fill', 'currentColor');
+    scrollIcon.removeAttribute('stroke');
+    scrollIcon.removeAttribute('stroke-width');
+    scrollIcon.removeAttribute('stroke-linecap');
+    scrollIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
   scrollLabel.textContent = active ? 'STOP' : 'SCROLL';
 });
 
@@ -667,6 +791,31 @@ document.getElementById('apply-btn').addEventListener('click', () => {
 });
 document.getElementById('close-settings-btn').addEventListener('click', () => {
   window.api.toggleSettings();
+});
+
+// ── Shortcuts modal ───────────────────────────────────────────────────────────
+const shortcutsModal = document.getElementById('shortcuts-modal');
+window.api.on('shortcuts-state', open => {
+  shortcutsModal.classList.toggle('open', open);
+});
+shortcutsModal.addEventListener('click', e => {
+  if (e.target === shortcutsModal) window.api.toggleShortcuts();
+});
+
+// ── Keyboard shortcuts (when bar / renderer has focus) ────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const plain   = !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+  const cmdOnly = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+  if (plain) {
+    if (e.key === ' ')                     { e.preventDefault(); window.api.toggleScroll(); }
+    else if (e.key === 'r' || e.key === 'R') { window.api.toggleRec(); }
+    else if (e.key === 's' || e.key === 'S') { window.api.screenshot(); }
+    else if (e.key === 'Escape')           { window.api.toggleScroll(); /* stop only, handled in main */ }
+  }
+  if (cmdOnly && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); window.api.refresh(); }
+  if (cmdOnly && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); window.api.toggleShortcuts(); }
+  if (e.key === 'Escape') { window.api.toggleShortcuts(); }
 });
 
 // ── Errors / misc ─────────────────────────────────────────────────────────────

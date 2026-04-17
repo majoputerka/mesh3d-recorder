@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const ALLOWED = [
   'rec-state', 'rec-timer', 'scroll-state',
   'screenshot-saved', 'recording-saved',
-  'navigated', 'error', 'settings-state', 'ffmpeg-missing',
+  'navigated', 'error', 'settings-state', 'shortcuts-state', 'ffmpeg-missing',
 ];
 
 contextBridge.exposeInMainWorld('api', {
@@ -12,9 +12,9 @@ contextBridge.exposeInMainWorld('api', {
   toggleRec:     ()        => ipcRenderer.send('toggle-rec'),
   pauseRec:      ()        => ipcRenderer.send('pause-rec'),
   toggleScroll:  ()        => ipcRenderer.send('toggle-scroll'),
-  resetScroll:   ()        => ipcRenderer.send('reset-scroll'),
   refresh:       ()        => ipcRenderer.send('refresh'),
-  toggleSettings:()        => ipcRenderer.send('toggle-settings'),
+  toggleSettings:  ()      => ipcRenderer.send('toggle-settings'),
+  toggleShortcuts: ()      => ipcRenderer.send('toggle-shortcuts'),
   grabUrl:       ()        => ipcRenderer.send('grab-url'),
   nextTab:       ()        => ipcRenderer.send('next-tab'),
   getCfg:        ()        => ipcRenderer.invoke('get-cfg'),
