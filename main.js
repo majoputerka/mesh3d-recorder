@@ -569,13 +569,29 @@ function startScroll() {
       const de = document.scrollingElement || document.documentElement;
       const startPos = de.scrollTop;
       const startMs  = performance.now();
+      let lastPos = startPos;
       function step() {
         if (!window.__m3dScrollActive) return;
         const elapsed = (performance.now() - startMs) / 1000;
         const max = Math.max(0, de.scrollHeight - de.clientHeight);
         const pos = Math.min(startPos + ${velocity} * elapsed, max);
-        if (pos >= max) window.__m3dScrollActive = false;
-        de.scrollTop = pos;
+
+        // DOM-scrollable pages: drive scrollTop and stop at bottom
+        if (max > 0) {
+          if (pos >= max) window.__m3dScrollActive = false;
+          de.scrollTop = pos;
+        }
+
+        // Always emit WheelEvent — covers WebGL/canvas sites that have no DOM scroll
+        // (max===0) as well as sites that need both scrollTop AND wheel events.
+        const delta = max > 0 ? (pos - lastPos) : (${velocity} / 60);
+        lastPos = pos;
+        if (delta > 0) {
+          const wEvt = { deltaY: delta, deltaMode: 0, bubbles: true, cancelable: true };
+          const evtTarget = document.querySelector('canvas') || document;
+          evtTarget.dispatchEvent(new WheelEvent('wheel', wEvt));
+          if (evtTarget !== document) window.dispatchEvent(new WheelEvent('wheel', wEvt));
+        }
         requestAnimationFrame(step);
       }
       requestAnimationFrame(step);
