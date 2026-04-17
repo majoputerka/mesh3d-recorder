@@ -1,0 +1,27 @@
+{
+  "name": "mesh3d-recorder",
+  "version": "1.0.0",
+  "description": "Browser recorder for mesh3d.gallery",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "gallery.mesh3d.recorder",
+    "productName": "mesh3d",
+    "files": ["main.js", "preload.js", "view-preload.js", "renderer.html", "node_modules/**/*"],
+    "mac": {
+      "category": "public.app-category.video",
+      "icon": "build/icon.icns",
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+    }
+  }
+}

@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>mesh3d recorder</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d0d0d;
+    --bar:      #141414;
+    --border:   #252525;
+    --text:     #b0b0b0;
+    --text-dim: #555;
+    --text-hi:  #e8e8e8;
+    --hover:    #1e1e1e;
+    --active:   #111;
+    --red:      #e74c3c;
+    --red-dim:  rgba(231,76,60,0.15);
+    --green:    #2ecc71;
+    --green-dim:rgba(46,204,113,0.15);
+    --accent:   #5b8af5;
+    --radius:   6px;
+    --font:     -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+    --mono:     'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: no-drag;
+  }
+
+  /* ── Control bar ─────────────────────────────────────────────────────── */
+  #bar {
+    display: flex;
+    align-items: center;
+    height: 54px;
+    background: var(--bar);
+    border-bottom: 1px solid var(--border);
+    padding: 0 10px 0 0;
+    gap: 6px;
+    -webkit-app-region: drag;
+  }
+  #bar > * { -webkit-app-region: no-drag; }
+
+  .traffic-gap { width: 78px; flex-shrink: 0; -webkit-app-region: drag; }
+
+  /* URL input group */
+  .url-group {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 4px;
+  }
+  #url-input {
+    flex: 1;
+    height: 30px;
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-hi);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 0 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #url-input::placeholder { color: var(--text-dim); }
+  #url-input:focus { border-color: var(--accent); }
+
+  /* Generic buttons */
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+  }
+  button:hover  { background: var(--hover); color: var(--text-hi); }
+  button:active { background: var(--active); }
+  button:disabled { opacity: 0.3; cursor: default; }
+
+  .icon-btn { width: 30px; padding: 0; font-size: 15px; }
+
+  /* Separator */
+  .sep {
+    width: 1px;
+    height: 22px;
+    background: var(--border);
+    flex-shrink: 0;
+    margin: 0 2px;
+  }
+
+  /* ── Record button ───────────────────────────────────────────────────── */
+  #rec-btn {
+    gap: 6px;
+    min-width: 60px;
+  }
+  .rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  #rec-btn.active { color: var(--red); background: var(--red-dim); }
+  #rec-btn.active .rec-dot { background: var(--red); }
+  #rec-btn.active:hover { background: rgba(231,76,60,0.22); }
+
+  /* Timer */
+  #timer {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--red);
+    min-width: 38px;
+    text-align: center;
+    opacity: 1;
+    transition: opacity 0.3s;
+  }
+  #timer.paused { opacity: 0.4; }
+  #timer.hidden { display: none; }
+
+  /* Pause btn */
+  #pause-btn.hidden { display: none; }
+  #pause-btn.active { color: var(--accent); }
+
+  /* ── Scroll button ───────────────────────────────────────────────────── */
+  #scroll-btn { min-width: 78px; gap: 6px; }
+  #scroll-btn.active { color: var(--green); background: var(--green-dim); }
+  #scroll-btn.active:hover { background: rgba(46,204,113,0.22); }
+
+  /* Speed */
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .speed-label { font-size: 11px; color: var(--text-dim); }
+  #speed-range {
+    -webkit-appearance: none;
+    width: 64px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  #speed-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #speed-range:hover::-webkit-slider-thumb { background: var(--text-hi); }
+
+  /* ── Settings panel ──────────────────────────────────────────────────── */
+  #settings-panel {
+    background: var(--bar);
+    border-bottom: 1px solid var(--border);
+    height: 0;
+    overflow: hidden;
+    transition: height 0.2s ease;
+  }
+  #settings-panel.open { height: 300px; }
+
+  .settings-inner {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    padding: 18px 20px;
+    height: 256px;
+    overflow-y: auto;
+  }
+
+  .s-section h4 {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .s-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+  }
+  .s-row label {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .s-row input[type="number"],
+  .s-row input[type="text"],
+  .s-row select {
+    height: 28px;
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-hi);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 0 8px;
+    outline: none;
+    width: 100%;
+  }
+  .s-row select { cursor: pointer; }
+  .s-row input:focus, .s-row select:focus { border-color: var(--accent); }
+  .s-row input[type="number"] { width: 80px; }
+
+  .dir-row {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+  .dir-row input { flex: 1; font-size: 11px; }
+  .dir-row button { height: 28px; font-size: 11px; padding: 0 8px; flex-shrink: 0; }
+
+  .s-row input[type="range"] {
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    border: none;
+    border-radius: 2px;
+    padding: 0;
+    width: 100%;
+    cursor: pointer;
+  }
+  .s-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--text);
+  }
+
+  .shortcuts-list { font-size: 11px; line-height: 2; color: var(--text-dim); }
+  .shortcuts-list kbd {
+    font-family: var(--mono);
+    color: var(--text-hi);
+    background: #1a1a1a;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .settings-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .settings-footer button {
+    height: 28px;
+    font-size: 12px;
+  }
+  #apply-btn {
+    background: var(--accent);
+    color: #fff;
+  }
+  #apply-btn:hover { background: #4a79e4; }
+
+  /* ── Toast ───────────────────────────────────────────────────────────── */
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-hi);
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    cursor: pointer;
+    z-index: 999;
+    max-width: 80%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  #toast.error { border-color: rgba(231,76,60,0.4); color: #ff7b6f; }
+</style>
+</head>
+<body>
+
+<!-- ── Control bar ─────────────────────────────────────────────────────────── -->
+<div id="bar">
+  <div class="traffic-gap"></div>
+
+  <!-- URL -->
+  <div class="url-group">
+    <input id="url-input" type="text" placeholder="lusion.co" spellcheck="false" />
+    <button id="go-btn" class="icon-btn" title="Navigate (Enter)">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Record -->
+  <button id="rec-btn" title="Record  ⌘⇧R">
+    <span class="rec-dot"></span>
+    <span id="rec-label">REC</span>
+  </button>
+  <button id="pause-btn" class="icon-btn hidden" title="Pause / Resume  ⌘⇧P">
+    <svg id="pause-icon" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+      <rect x="1" y="1" width="3.5" height="10" rx="1"/>
+      <rect x="7.5" y="1" width="3.5" height="10" rx="1"/>
+    </svg>
+  </button>
+  <span id="timer" class="hidden">0:00</span>
+
+  <div class="sep"></div>
+
+  <!-- Scroll -->
+  <button id="scroll-btn" title="Toggle scroll  ⌘⇧↓">
+    <svg id="scroll-icon" width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+      <path d="M1 1l8 5-8 5V1z"/>
+    </svg>
+    <span id="scroll-label">SCROLL</span>
+  </button>
+  <div class="speed-wrap">
+    <span class="speed-label">spd</span>
+    <input id="speed-range" type="range" min="1" max="30" value="2" title="Scroll speed" />
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- Utilities -->
+  <button id="top-btn" class="icon-btn" title="Reset to top  ⌘⇧↑">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 10V4M3 6l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="2" y1="12" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </button>
+  <button id="refresh-btn" class="icon-btn" title="Refresh  ⌘⇧F">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M12 7A5 5 0 1 1 7 2a5 5 0 0 1 3.54 1.46L12 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 2v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <div class="sep"></div>
+
+  <button id="shot-btn" class="icon-btn" title="Screenshot  ⌘⇧M">
+    <svg width="15" height="14" viewBox="0 0 15 14" fill="none">
+      <rect x="1" y="3" width="13" height="10" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+      <circle cx="7.5" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M5 3l1-2h3l1 2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <div class="sep"></div>
+
+  <button id="cfg-btn" class="icon-btn" title="Settings">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.93 2.93l1.06 1.06M10.01 10.01l1.06 1.06M2.93 11.07l1.06-1.06M10.01 3.99l1.06-1.06" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+  </button>
+</div>
+
+<!-- ── Settings panel ──────────────────────────────────────────────────────── -->
+<div id="settings-panel">
+  <div class="settings-inner">
+
+    <div class="s-section">
+      <h4>Canvas</h4>
+      <div class="s-row">
+        <label>Width (px)</label>
+        <input type="number" id="s-width" min="320" max="7680" step="1" />
+      </div>
+      <div class="s-row">
+        <label>Height (px)</label>
+        <input type="number" id="s-height" min="200" max="4320" step="1" />
+      </div>
+    </div>
+
+    <div class="s-section">
+      <h4>Video</h4>
+      <div class="s-row">
+        <label>Codec</label>
+        <select id="s-codec">
+          <option value="hevc_hw">Apple HEVC — hardware (recommended)</option>
+          <option value="h264_hw">Apple H.264 — hardware</option>
+          <option value="h264">H.264 — software</option>
+          <option value="h265">H.265 — software</option>
+        </select>
+      </div>
+      <div class="s-row">
+        <label>Framerate</label>
+        <select id="s-fps">
+          <option value="24">24 fps</option>
+          <option value="30">30 fps</option>
+          <option value="60">60 fps</option>
+        </select>
+      </div>
+      <div class="s-row">
+        <label id="quality-label">Quality <span id="quality-val"></span></label>
+        <input type="range" id="s-quality" min="1" max="100" step="1" />
+      </div>
+      <div class="s-row">
+        <label>Save directory</label>
+        <div class="dir-row">
+          <input type="text" id="s-videodir" readonly />
+          <button id="browse-video">Browse</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="s-section">
+      <h4>Screenshot</h4>
+      <div class="s-row">
+        <label>Format</label>
+        <select id="s-ssfmt">
+          <option value="webp">WebP</option>
+          <option value="png">PNG</option>
+          <option value="jpeg">JPEG</option>
+        </select>
+      </div>
+      <div class="s-row">
+        <label>Quality (<span id="ssq-val"></span>)</label>
+        <input type="range" id="s-ssq" min="50" max="100" step="1" />
+      </div>
+      <div class="s-row">
+        <label>Save directory</label>
+        <div class="dir-row">
+          <input type="text" id="s-ssdir" readonly />
+          <button id="browse-ss">Browse</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="s-section">
+      <h4>Shortcuts</h4>
+      <div class="shortcuts-list">
+        <div><kbd>⌘⇧R</kbd> — Record start/stop</div>
+        <div><kbd>⌘⇧P</kbd> — Pause / resume</div>
+        <div><kbd>⌘⇧M</kbd> — Screenshot</div>
+        <div><kbd>⌘⇧↓</kbd> — Scroll toggle</div>
+        <div><kbd>⌘⇧↑</kbd> — Reset to top</div>
+        <div><kbd>⌘⇧F</kbd> — Refresh</div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #252525"></div>
+        <div><kbd>^G</kbd> — Load URL from clipboard</div>
+        <div><kbd>^N</kbd> — Next browser tab</div>
+        <div><kbd>^R</kbd> — Refresh page</div>
+        <div style="font-size:10px;color:#444;margin-top:6px">For ^G: Cmd+L → Cmd+C in browser first</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="settings-footer">
+    <button id="close-settings-btn">Cancel</button>
+    <button id="apply-btn">Apply</button>
+  </div>
+</div>
+
+<!-- ── Toast ────────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let isRecording = false;
+let isPaused    = false;
+let isScrolling = false;
+let toastTimer  = null;
+let timerInterval = null;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const urlInput    = document.getElementById('url-input');
+const goBtn       = document.getElementById('go-btn');
+const recBtn      = document.getElementById('rec-btn');
+const recLabel    = document.getElementById('rec-label');
+const pauseBtn    = document.getElementById('pause-btn');
+const pauseIcon   = document.getElementById('pause-icon');
+const timerEl     = document.getElementById('timer');
+const scrollBtn   = document.getElementById('scroll-btn');
+const scrollIcon  = document.getElementById('scroll-icon');
+const scrollLabel = document.getElementById('scroll-label');
+const speedRange  = document.getElementById('speed-range');
+const topBtn      = document.getElementById('top-btn');
+const refreshBtn  = document.getElementById('refresh-btn');
+const shotBtn     = document.getElementById('shot-btn');
+const cfgBtn      = document.getElementById('cfg-btn');
+const panel       = document.getElementById('settings-panel');
+const toast       = document.getElementById('toast');
+
+// Settings inputs
+const sWidth      = document.getElementById('s-width');
+const sHeight     = document.getElementById('s-height');
+const sCodec      = document.getElementById('s-codec');
+const sFps        = document.getElementById('s-fps');
+const sQuality    = document.getElementById('s-quality');
+const qualityVal  = document.getElementById('quality-val');
+const qualityLbl  = document.getElementById('quality-label');
+const sVideodir   = document.getElementById('s-videodir');
+const sSsfmt      = document.getElementById('s-ssfmt');
+const sSsq        = document.getElementById('s-ssq');
+const ssqVal      = document.getElementById('ssq-val');
+const sSsdir      = document.getElementById('s-ssdir');
+
+function updateQualityLabel(codec, val) {
+  const hw = codec === 'hevc_hw' || codec === 'h264_hw';
+  qualityLbl.firstChild.textContent = hw ? 'Quality ' : 'Quality (CRF) ';
+  qualityVal.textContent = hw ? val : Math.round(35 - ((val - 1) / 99) * 25);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.api.getCfg().then(cfg => {
+  sWidth.value     = cfg.width;
+  sHeight.value    = cfg.height;
+  sCodec.value     = cfg.codec || 'hevc_hw';
+  sFps.value       = cfg.fps;
+  sQuality.value   = cfg.quality ?? 65;
+  sVideodir.value  = cfg.videoDir;
+  sSsfmt.value     = cfg.ssFormat;
+  sSsq.value       = cfg.ssQuality;
+  ssqVal.textContent = cfg.ssQuality;
+  sSsdir.value     = cfg.ssDir;
+  speedRange.value = cfg.scrollSpeed;
+  updateQualityLabel(sCodec.value, sQuality.value);
+});
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function navigate() {
+  const url = urlInput.value.trim();
+  if (url) window.api.navigate(url);
+}
+goBtn.addEventListener('click', navigate);
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); });
+
+window.api.on('navigated', url => {
+  // Extract domain for display
+  try {
+    const u = new URL(url);
+    urlInput.value = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname : '');
+  } catch { urlInput.value = url; }
+});
+
+// ── Recording ─────────────────────────────────────────────────────────────────
+recBtn.addEventListener('click', () => window.api.toggleRec());
+pauseBtn.addEventListener('click', () => window.api.pauseRec());
+
+window.api.on('rec-state', ({ recording, paused }) => {
+  isRecording = recording;
+  isPaused    = paused;
+
+  recBtn.classList.toggle('active', recording);
+  recLabel.textContent = recording ? 'STOP' : 'REC';
+
+  pauseBtn.classList.toggle('hidden', !recording);
+  timerEl.classList.toggle('hidden', !recording);
+  timerEl.classList.toggle('paused', paused);
+
+  // Swap pause icon between pause/play
+  pauseIcon.innerHTML = paused
+    ? '<path d="M2 1l10 5L2 11V1z" fill="currentColor"/>'
+    : '<rect x="1" y="1" width="3.5" height="10" rx="1"/><rect x="7.5" y="1" width="3.5" height="10" rx="1"/>';
+  pauseBtn.classList.toggle('active', paused);
+});
+
+window.api.on('rec-timer', secs => {
+  const m = String(Math.floor(secs / 60)).padStart(2, '0');
+  const s = String(secs % 60).padStart(2, '0');
+  timerEl.textContent = `${m}:${s}`;
+});
+
+window.api.on('recording-saved', filepath => {
+  showToast(`Saved: ${filepath.split('/').pop()}`, false, filepath);
+});
+
+// ── Scroll ────────────────────────────────────────────────────────────────────
+scrollBtn.addEventListener('click', () => window.api.toggleScroll());
+topBtn.addEventListener('click',    () => window.api.resetScroll());
+refreshBtn.addEventListener('click',() => window.api.refresh());
+
+speedRange.addEventListener('input', () => {
+  window.api.setCfg({ scrollSpeed: Number(speedRange.value) });
+});
+
+window.api.on('scroll-state', active => {
+  isScrolling = active;
+  scrollBtn.classList.toggle('active', active);
+  scrollIcon.innerHTML = active
+    ? '<rect x="1" y="1" width="3.5" height="10" rx="1" fill="currentColor"/><rect x="5.5" y="1" width="3.5" height="10" rx="1" fill="currentColor"/>'
+    : '<path d="M1 1l8 5-8 5V1z" fill="currentColor"/>';
+  scrollLabel.textContent = active ? 'STOP' : 'SCROLL';
+});
+
+// ── Screenshot ────────────────────────────────────────────────────────────────
+shotBtn.addEventListener('click', () => window.api.screenshot());
+window.api.on('screenshot-saved', filepath => {
+  showToast(`Screenshot: ${filepath.split('/').pop()}`, false, filepath);
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+cfgBtn.addEventListener('click', () => window.api.toggleSettings());
+
+window.api.on('settings-state', open => {
+  panel.classList.toggle('open', open);
+});
+
+sCodec.addEventListener('change', () => updateQualityLabel(sCodec.value, sQuality.value));
+sQuality.addEventListener('input', () => updateQualityLabel(sCodec.value, sQuality.value));
+sSsq.addEventListener('input', () => { ssqVal.textContent = sSsq.value; });
+
+document.getElementById('browse-video').addEventListener('click', async () => {
+  const dir = await window.api.pickDir();
+  if (dir) sVideodir.value = dir;
+});
+document.getElementById('browse-ss').addEventListener('click', async () => {
+  const dir = await window.api.pickDir();
+  if (dir) sSsdir.value = dir;
+});
+
+document.getElementById('apply-btn').addEventListener('click', () => {
+  window.api.setCfg({
+    width:     Number(sWidth.value),
+    height:    Number(sHeight.value),
+    codec:     sCodec.value,
+    fps:       Number(sFps.value),
+    quality:   Number(sQuality.value),
+    videoDir:  sVideodir.value,
+    ssFormat:  sSsfmt.value,
+    ssQuality: Number(sSsq.value),
+    ssDir:     sSsdir.value,
+  });
+  window.api.toggleSettings();
+});
+document.getElementById('close-settings-btn').addEventListener('click', () => {
+  window.api.toggleSettings();
+});
+
+// ── Errors / misc ─────────────────────────────────────────────────────────────
+window.api.on('error', msg => showToast(msg, true));
+window.api.on('ffmpeg-missing', () => {
+  showToast('ffmpeg not found — install via: brew install ffmpeg', true);
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, isErr = false, filepath = null) {
+  clearTimeout(toastTimer);
+  toast.textContent = msg;
+  toast.className   = 'show' + (isErr ? ' error' : '');
+  toast.onclick     = filepath ? () => window.api.openPath(filepath) : null;
+  toastTimer = setTimeout(() => { toast.className = ''; }, isErr ? 6000 : 4000);
+}
+</script>
+</body>
+</html>
