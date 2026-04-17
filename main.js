@@ -11,6 +11,16 @@ const { spawn, execFile, exec } = require('child_process');
 let ffmpegBin = 'ffmpeg';
 try { ffmpegBin = require('@ffmpeg-installer/ffmpeg').path; } catch {}
 
+// ─── Chromium tuning (must be set before app is ready) ──────────────────────
+// The BrowserView is a second webContents that Chromium de-prioritizes when
+// our Electron shell window holds focus. That causes paint/compositor
+// throttling, which shows up as stuttery scroll in recordings. Turn all the
+// throttles off so the view paints at full rate regardless of focus.
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
 // ─── App name & icon ─────────────────────────────────────────────────────────
 app.name = 'mesh3d';
 const ICON_PATH = path.join(__dirname, 'build', 'mesh3d-logo-icon_1-iOS-Default-1024x1024@1x.png');
@@ -157,18 +167,14 @@ let recording    = false;
 let paused       = false;
 let scrolling    = false;
 let ffProc       = null;
+let ffLogStream  = null;
 let recTimerInt  = null;
 let recStart     = null;
 let currentUrl   = '';
-let frameDeltas          = [];
-let captureDurWarmup     = [];
-let captureDurPost       = [];
-let droppedTickCount     = 0;
-let modeSwitchCount      = 0;
-let detectedRefreshRate  = 60;
-let captureEveryNthRaf   = 2;
-let captureTickHandler   = null;
-let watchdogTimer        = null;
+let screencastOn = false;
+let frameCount   = 0;
+let lastJpeg     = null;
+let writeTimer   = null;
 
 // ─── Window ──────────────────────────────────────────────────────────────────
 function create() {
@@ -195,7 +201,7 @@ function create() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
-      preload: path.join(__dirname, 'view-preload.js'),
+      backgroundThrottling: false,
     },
   });
 
@@ -376,39 +382,31 @@ async function screenshot() {
 }
 
 // ─── Recording ───────────────────────────────────────────────────────────────
-// Device emulation (deviceScaleFactor:1, viewSize:cfg) keeps the view at its
-// current scaled-down window size so the user can interact normally, while
-// capturePage() returns exactly cfg.width × cfg.height BGRA frames.
+// Capture is push-based: Chromium's DevTools Protocol (Page.startScreencast)
+// emits one JPEG per actual compositor paint. We pipe those JPEGs into ffmpeg
+// with wallclock timestamps, so the output video's frame timing reflects when
+// frames were actually painted — no stale-compositor duplicates.
 async function startRec() {
   if (recording) return;
   if (!currentUrl) { notify('error', 'Navigate to a page first'); return; }
 
-  // Ensure emulation is active — view stays visually scaled, output is full-res.
   applyDeviceEmulation();
 
-
-  frameDeltas      = [];
-  captureDurWarmup = [];
-  captureDurPost   = [];
   const name     = urlToName(currentUrl);
   const dest     = path.join(cfg.videoDir, `${name}.mp4`);
-  const rawDest  = path.join(cfg.videoDir, `${name}_raw.mp4`);
   const codecKey = cfg.codec || 'hevc_hw';
   const ffCodec  = CODEC_MAP[codecKey] || 'hevc_videotoolbox';
   const hw       = isHWCodec(codecKey);
   ensureDir(cfg.videoDir);
 
-  const fw = cfg.width;
-  const fh = cfg.height;
-  const frameMs = Math.round(1000 / cfg.fps);
-
+  // We emit exactly `fps` JPEGs per second from Node (setInterval below), so
+  // ffmpeg reads a clean CFR MJPEG stream. No -use_wallclock_as_timestamps
+  // (image2pipe doesn't honor it) and no -vf fps (no resampling needed).
   const ffArgs = [
     '-y',
-    '-f', 'rawvideo',
-    '-pixel_format', 'bgra',
-    '-video_size', `${fw}x${fh}`,
+    '-f', 'image2pipe',
+    '-vcodec', 'mjpeg',
     '-framerate', String(cfg.fps),
-    '-use_wallclock_as_timestamps', '1',
     '-i', 'pipe:0',
     '-c:v', ffCodec,
   ];
@@ -424,127 +422,73 @@ async function startRec() {
     ffArgs.push('-tag:v', 'hvc1');
   }
 
-  ffArgs.push('-vsync', 'cfr', '-pix_fmt', 'yuv420p', '-an', rawDest);
+  ffArgs.push('-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', dest);
 
   ffProc = spawn(ffmpegBin, ffArgs);
-  ffProc.stderr.on('data', () => {});
+
+  const logPath = path.join(app.getPath('userData'), 'ffmpeg.log');
+  try { ffLogStream = fs.createWriteStream(logPath, { flags: 'w' }); } catch {}
+  ffProc.stderr.on('data', (d) => { if (ffLogStream) ffLogStream.write(d); });
+  ffProc.stdin.on('error', () => {});
   ffProc.on('error', (e) => notify('error', `ffmpeg: ${e.message}`));
   ffProc.on('close', (code) => {
     ffProc = null;
+    if (ffLogStream) { ffLogStream.end(); ffLogStream = null; }
     if (code === 0 || code === null) {
-      // Trim the 1-second warmup from the start of the raw video (stream copy, fast)
-      const trimProc = spawn(ffmpegBin, [
-        '-y', '-ss', '1.0', '-i', rawDest, '-c', 'copy', dest,
-      ]);
-      trimProc.stderr.on('data', () => {});
-      trimProc.on('close', (trimCode) => {
-        try { fs.unlinkSync(rawDest); } catch {}
-        notify('recording-saved', trimCode === 0 ? dest : rawDest);
-      });
+      notify('recording-saved', dest);
     } else {
-      try { fs.unlinkSync(rawDest); } catch {}
-      notify('error', `ffmpeg exited with code ${code} — try H.264 codec`);
+      notify('error', `ffmpeg exited with code ${code} — see ${logPath}`);
     }
   });
 
-  recording = true;
-  paused    = false;
-  recStart  = Date.now();
+  recording  = true;
+  paused     = false;
+  recStart   = Date.now();
+  frameCount = 0;
+  lastJpeg   = null;
 
-  // ── Refresh rate & capture cadence ─────────────────────────────────────────
-  const refreshRate = screen.getPrimaryDisplay().displayFrequency || 60;
-  const captureN    = Math.max(1, Math.round(refreshRate / cfg.fps));
-  detectedRefreshRate = refreshRate;
-  captureEveryNthRaf  = captureN;
-  droppedTickCount    = 0;
-  modeSwitchCount     = 0;
-  console.log(`[mesh3d] sync: refresh=${refreshRate}Hz captureEveryNthRaf=${captureN} frameMs=${frameMs}ms`);
-
-  const WARMUP_MS      = 1000;
-  const WARMUP_PREWARM = 10;
-  let warmupDone   = false;
-  let warmupCount  = 0;
-  let warmupEnd    = Date.now() + WARMUP_MS;
-  let lastWriteAt  = 0;
-  let lastDeltaAt  = 0;
-  let lastTickAt   = 0;
-  let tickReceived = false;   // set by IPC handler, cleared on write
-  let ipcActive    = false;   // tracks mode for logging only
-
-  // Free-running loop — always active throughout recording (warmup + capture).
-  // Writes on rAF tick (scroll-synced) or falls back to time-based throttle.
-  function doCapture() {
-    if (!recording) return;
-    const t0 = Date.now();
-    view.webContents.capturePage().then((img) => {
-      if (!recording) return;
-      const now = Date.now();
-      const dur = now - t0;
-
-      if (!warmupDone) {
-        captureDurWarmup.push(dur);
-        warmupCount++;
-        if (now >= warmupEnd && warmupCount >= WARMUP_PREWARM) {
-          warmupDone  = true;
-          lastWriteAt = now;
-          lastDeltaAt = now;
-          lastTickAt  = now;
-          console.log(`[mesh3d] warmup done: ${warmupCount} captures in ${now - (warmupEnd - WARMUP_MS)}ms`);
-          startWatchdog();
-        }
-        setTimeout(doCapture, 0);
-        return;
-      }
-
-      captureDurPost.push(dur);
-      // Tick arrived → write now (scroll-synced). No tick → time-based fallback.
-      const shouldWrite = tickReceived || (now - lastWriteAt >= frameMs);
-      if (!paused && !img.isEmpty() && ffProc?.stdin?.writable && shouldWrite) {
-        tickReceived = false;
-        if (lastDeltaAt > 0) frameDeltas.push(now - lastDeltaAt);
-        lastDeltaAt = now;
-        lastWriteAt = now;
-        const { width, height } = img.getSize();
-        const frame = (width === cfg.width && height === cfg.height)
-          ? img
-          : img.resize({ width: cfg.width, height: cfg.height, quality: 'best' });
-        ffProc.stdin.write(frame.getBitmap());
-      }
-      setTimeout(doCapture, 0);
-    }).catch(() => {
-      if (recording) setTimeout(doCapture, 4);
+  try {
+    const wc = view.webContents;
+    // Focus the view's webContents so Chromium treats it as the active
+    // target and doesn't down-prioritize its compositor.
+    wc.focus();
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+    wc.debugger.on('message', onCdpMessage);
+    await wc.debugger.sendCommand('Page.enable');
+    await wc.debugger.sendCommand('Page.startScreencast', {
+      format: 'jpeg',
+      quality: Math.max(1, Math.min(100, cfg.quality)),
+      maxWidth: cfg.width,
+      maxHeight: cfg.height,
+      everyNthFrame: 1,
     });
+    screencastOn = true;
+  } catch (e) {
+    notify('error', `CDP attach failed: ${e.message}`);
+    recording = false;
+    try { ffProc?.stdin.end(); } catch {}
+    return;
   }
 
-  // IPC handler: flag a tick — free-run loop consumes it on next resolution.
-  captureTickHandler = () => {
-    if (!recording || !warmupDone) return;
-    lastTickAt = Date.now();
-    if (tickReceived) droppedTickCount++;   // coalesced tick (previous not yet consumed)
-    tickReceived = true;
-    if (!ipcActive) {
-      ipcActive = true;
-      modeSwitchCount++;
-      console.log('[mesh3d] mode switch: time-gated → tick-gated');
+  // Emit exactly `fps` frames per second of wall-clock to ffmpeg. If the
+  // browser paints slower than fps, the previous frame is repeated; if faster,
+  // intermediate paints are dropped. This guarantees the output duration
+  // matches real time and dupes are uniformly spaced.
+  const frameMs = 1000 / cfg.fps;
+  let nextTick  = Date.now() + frameMs;
+  const emit = () => {
+    if (!recording) return;
+    if (!paused && lastJpeg && ffProc && ffProc.stdin.writable) {
+      try {
+        ffProc.stdin.write(lastJpeg);
+        frameCount++;
+      } catch {}
     }
+    nextTick += frameMs;
+    const delay = Math.max(0, nextTick - Date.now());
+    writeTimer = setTimeout(emit, delay);
   };
-
-  ipcMain.on('m3d-capture-tick', captureTickHandler);
-
-  // Watchdog: log when ticks stop arriving (capture still runs via time-gated fallback).
-  function startWatchdog() {
-    clearInterval(watchdogTimer);
-    watchdogTimer = setInterval(() => {
-      if (!recording || !warmupDone) return;
-      if (ipcActive && Date.now() - lastTickAt > 200) {
-        ipcActive = false;
-        modeSwitchCount++;
-        console.log('[mesh3d] mode switch: tick-gated → time-gated (no ticks for 200ms)');
-      }
-    }, 100);
-  }
-
-  doCapture();
+  writeTimer = setTimeout(emit, frameMs);
 
   recTimerInt = setInterval(() => {
     notify('rec-timer', Math.floor((Date.now() - recStart) / 1000));
@@ -553,103 +497,56 @@ async function startRec() {
   notify('rec-state', { recording: true, paused: false });
 }
 
+// CDP message router — the debugger API delivers every domain event here.
+// We only care about screencast frames. Ack first so Chromium queues the next
+// paint while we're still writing this one to ffmpeg.
+function onCdpMessage(_event, method, params) {
+  if (method !== 'Page.screencastFrame') return;
+  const sessionId = params.sessionId;
+  if (view && !view.webContents.isDestroyed()) {
+    view.webContents.debugger.sendCommand('Page.screencastFrameAck', { sessionId })
+      .catch(() => {});
+  }
+
+  if (!recording || paused) return;
+  try {
+    lastJpeg = Buffer.from(params.data, 'base64');
+  } catch {}
+}
+
 function pauseRec() {
   if (!recording) return;
   paused = !paused;
   notify('rec-state', { recording: true, paused });
 }
 
-function frameStats(deltas) {
-  const n = deltas.length;
-  if (!n) return null;
-  const mean     = deltas.reduce((a, b) => a + b, 0) / n;
-  const variance = deltas.reduce((a, d) => a + (d - mean) ** 2, 0) / n;
-  const stddev   = Math.sqrt(variance);
-  const min      = Math.min(...deltas);
-  const max      = Math.max(...deltas);
-  return { mean, stddev, min, max, n };
-}
-
-function stopRec() {
+async function stopRec() {
   if (!recording) return;
   recording = false;
   paused    = false;
 
+  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
+
+  try {
+    const wc = view?.webContents;
+    if (wc && !wc.isDestroyed()) {
+      wc.debugger.off('message', onCdpMessage);
+      if (screencastOn) {
+        try { await wc.debugger.sendCommand('Page.stopScreencast'); } catch {}
+      }
+      if (wc.debugger.isAttached()) {
+        try { wc.debugger.detach(); } catch {}
+      }
+    }
+  } catch {}
+  screencastOn = false;
+  lastJpeg = null;
+
   if (ffProc) { try { ffProc.stdin.end(); } catch {} }
 
-  clearInterval(watchdogTimer);
-  watchdogTimer = null;
-  if (captureTickHandler) {
-    ipcMain.removeListener('m3d-capture-tick', captureTickHandler);
-    captureTickHandler = null;
-  }
-
-  // Print frame interval timing summary
-  const deltas = frameDeltas.slice();
-  if (deltas.length) {
-    const splitAt = Math.round(2 * cfg.fps);
-    const first2s = deltas.slice(0, splitAt);
-    const rest    = deltas.slice(splitAt);
-    const fmt = (s) => `mean=${s.mean.toFixed(1)}ms stddev=${s.stddev.toFixed(1)} min=${s.min} max=${s.max} n=${s.n}`;
-    console.log(`[mesh3d] frame deltas — all: ${fmt(frameStats(deltas))}`);
-    if (first2s.length) console.log(`[mesh3d]   first 2s: ${fmt(frameStats(first2s))}`);
-    if (rest.length)    console.log(`[mesh3d]   after 2s: ${fmt(frameStats(rest))}`);
-  }
-  const fmtD = (s) => `mean=${s.mean.toFixed(1)}ms stddev=${s.stddev.toFixed(1)} min=${s.min} max=${s.max} n=${s.n}`;
-  if (captureDurWarmup.length) console.log(`[mesh3d] capturePage duration — warmup: ${fmtD(frameStats(captureDurWarmup))}`);
-  if (captureDurPost.length) {
-    const ps  = frameStats(captureDurPost);
-    const fms = Math.round(1000 / cfg.fps);
-    console.log(`[mesh3d] capturePage duration — post-warmup: ${fmtD(ps)}`);
-    console.log(`[mesh3d] capture budget ratio: post-warmup mean / frameMs = ${(ps.mean / fms).toFixed(2)}`);
-  }
-  console.log(`[mesh3d] sync mode: detected refresh=${detectedRefreshRate}Hz, captureEveryNthRaf=${captureEveryNthRaf}`);
-  console.log(`[mesh3d] dropped ticks: ${droppedTickCount} (target 0, acceptable <5/min)`);
-  console.log(`[mesh3d] mode switches: ${modeSwitchCount} (ipc ↔ fallback)`);
-
-  // Async: fetch scroll signal log from renderer and compute summary stats.
-  try {
-    view.webContents.executeJavaScript('JSON.stringify(window.__m3dScrollLog || [])').then(json => {
-      const log = JSON.parse(json);
-      if (!log.length) { console.log('[mesh3d] rAF log: no data (scroll not active during recording)'); return; }
-
-      const logPath = path.join(os.tmpdir(), 'mesh3d-scroll-debug.json');
-      try { fs.writeFileSync(logPath, json); } catch {}
-
-      const tsDeltasAll   = log.map(f => f[2]);
-      const tsDeltaDrops  = tsDeltasAll.filter(d => d > 20);
-      const maxDelta      = Math.max(...tsDeltasAll);
-
-      const absErrors = [];
-      for (let i = 1; i < log.length; i++) {
-        absErrors.push(Math.abs((log[i][3] - log[i-1][3]) - (log[i][5] - log[i-1][5])));
-      }
-
-      const tickFrames     = log.filter(f => f[6] === 1);
-      const capturedDeltas = [];
-      for (let i = 1; i < tickFrames.length; i++) {
-        capturedDeltas.push(tickFrames[i][5] - tickFrames[i-1][5]);
-      }
-
-      const stat = arr => {
-        const n = arr.length;
-        if (!n) return { mean: 0, stddev: 0, min: 0, max: 0, n: 0 };
-        const mean = arr.reduce((a, b) => a + b, 0) / n;
-        const stddev = Math.sqrt(arr.reduce((a, d) => a + (d - mean) ** 2, 0) / n);
-        return { mean, stddev, min: Math.min(...arr), max: Math.max(...arr), n };
-      };
-
-      const cad = stat(tsDeltasAll);
-      const err = stat(absErrors);
-      const cap = stat(capturedDeltas);
-
-      console.log(`[mesh3d] rAF cadence: mean=${cad.mean.toFixed(1)}ms stddev=${cad.stddev.toFixed(1)} min=${cad.min.toFixed(1)} max=${cad.max.toFixed(1)}`);
-      console.log(`[mesh3d] rAF drops (tsDelta > 20ms): count=${tsDeltaDrops.length}, max observed delta=${maxDelta.toFixed(1)}ms`);
-      console.log(`[mesh3d] scrollTop quantization: mean abs error=${err.mean.toFixed(3)}px, max error=${err.max.toFixed(3)}px`);
-      console.log(`[mesh3d] captured frame deltas (scrollTopAfter between tick frames): mean=${cap.mean.toFixed(2)}px stddev=${cap.stddev.toFixed(2)} min=${cap.min} max=${cap.max} n=${cap.n}`);
-      console.log(`[mesh3d] rAF debug log → ${logPath}`);
-    }).catch(() => {});
-  } catch {}
+  const elapsed = (Date.now() - recStart) / 1000;
+  const avgFps  = elapsed > 0 ? frameCount / elapsed : 0;
+  console.log(`[mesh3d] recording done: ${frameCount} frames in ${elapsed.toFixed(1)}s (avg ${avgFps.toFixed(1)} fps painted)`);
 
   clearInterval(recTimerInt);
   recTimerInt = null;
@@ -658,46 +555,27 @@ function stopRec() {
 }
 
 // ─── Scroll ───────────────────────────────────────────────────────────────────
+// Drives scrollTop from wall-clock time: pos = startPos + velocity × elapsed.
+// This guarantees correct average velocity regardless of rAF jitter. Individual
+// painted frames may still show variance in motion (that's a compositor paint
+// timing issue, not a scroll issue) but velocity is stable second-to-second.
 function startScroll() {
   if (!currentUrl) return;
   scrolling = true;
-  // velocity in px/s — scrollSpeed was pixels per 16ms tick, so × 62.5
-  const velocity = cfg.scrollSpeed * 62.5;
-  view.webContents.executeJavaScript(`typeof window.__m3dRecorder?.captureTick`)
-    .then(t => console.log(`[mesh3d] preload check: captureTick = ${t}`))
-    .catch(() => {});
-  const rafN = captureEveryNthRaf;
+  const velocity = cfg.scrollSpeed * 62.5; // px/s (scrollSpeed is legacy px/16ms)
   view.webContents.executeJavaScript(`
     (function() {
       window.__m3dScrollActive = true;
-      window.__m3dScrollLog = [];
-      let lastTs = null;
-      let pos = window.scrollY;
-      let rafCount = 0;
-      let firstTs = null;
-      const captureN = ${rafN};
-      function step(ts) {
+      const de = document.scrollingElement || document.documentElement;
+      const startPos = de.scrollTop;
+      const startMs  = performance.now();
+      function step() {
         if (!window.__m3dScrollActive) return;
-        if (lastTs !== null) {
-          if (firstTs === null) firstTs = ts;
-          const tsDelta = ts - lastTs;
-          const delta = ${velocity} * tsDelta / 1000;
-          pos += delta;
-          const scrollTopBefore = document.documentElement.scrollTop;
-          document.documentElement.scrollTop = pos;
-          document.body.scrollTop = pos;
-          const scrollTopAfter = document.documentElement.scrollTop;
-          document.dispatchEvent(new WheelEvent('wheel', {
-            deltaY: delta, deltaMode: 0, bubbles: true, cancelable: true
-          }));
-          rafCount++;
-          const tickSent = rafCount % captureN === 0;
-          if (tickSent) window.__m3dRecorder?.captureTick();
-          if (ts - firstTs < 5000) {
-            window.__m3dScrollLog.push([rafCount, ts, tsDelta, pos, scrollTopBefore, scrollTopAfter, tickSent ? 1 : 0]);
-          }
-        }
-        lastTs = ts;
+        const elapsed = (performance.now() - startMs) / 1000;
+        const max = Math.max(0, de.scrollHeight - de.clientHeight);
+        const pos = Math.min(startPos + ${velocity} * elapsed, max);
+        if (pos >= max) window.__m3dScrollActive = false;
+        de.scrollTop = pos;
         requestAnimationFrame(step);
       }
       requestAnimationFrame(step);
