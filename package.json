@@ -17,7 +17,7 @@
   "build": {
     "appId": "gallery.mesh3d.recorder",
     "productName": "mesh3d",
-    "files": ["main.js", "preload.js", "view-preload.js", "renderer.html", "node_modules/**/*"],
+    "files": ["main.js", "preload.js", "renderer.html", "node_modules/**/*"],
     "mac": {
       "category": "public.app-category.video",
       "icon": "build/icon.icns",
