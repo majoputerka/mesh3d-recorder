@@ -10,6 +10,9 @@ const { spawn, execFile, exec } = require('child_process');
 // ─── ffmpeg ─────────────────────────────────────────────────────────────────
 let ffmpegBin = 'ffmpeg';
 try { ffmpegBin = require('@ffmpeg-installer/ffmpeg').path; } catch {}
+// In a packaged app the binary lives in app.asar.unpacked, not app.asar.
+if (ffmpegBin.includes('app.asar' + path.sep))
+  ffmpegBin = ffmpegBin.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
 
 // ─── Chromium tuning (must be set before app is ready) ──────────────────────
 // The BrowserView is a second webContents that Chromium de-prioritizes when
