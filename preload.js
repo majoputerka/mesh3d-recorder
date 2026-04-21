@@ -4,6 +4,7 @@ const ALLOWED = [
   'rec-state', 'rec-timer', 'scroll-state',
   'screenshot-saved', 'recording-saved',
   'navigated', 'error', 'settings-state', 'shortcuts-state', 'ffmpeg-missing',
+  'frozen-frame', 'clear-frame',
 ];
 
 contextBridge.exposeInMainWorld('api', {
@@ -15,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   refresh:       ()        => ipcRenderer.send('refresh'),
   toggleSettings:  ()      => ipcRenderer.send('toggle-settings'),
   toggleShortcuts: ()      => ipcRenderer.send('toggle-shortcuts'),
+  closePanel:      ()      => ipcRenderer.send('panel-close'),
   grabUrl:       ()        => ipcRenderer.send('grab-url'),
   nextTab:       ()        => ipcRenderer.send('next-tab'),
   getCfg:        ()        => ipcRenderer.invoke('get-cfg'),

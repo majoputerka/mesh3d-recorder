@@ -3,607 +3,888 @@
 <head>
 <meta charset="UTF-8">
 <title>mesh3d recorder</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,1,0&display=block" rel="stylesheet" />
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:       #0d0d0d;
-    --bar:      #141414;
-    --border:   #252525;
-    --text:     #b0b0b0;
-    --text-dim: #555;
-    --text-hi:  #e8e8e8;
-    --hover:    #1e1e1e;
-    --active:   #111;
-    --red:      #e74c3c;
-    --red-dim:  rgba(231,76,60,0.15);
-    --green:    #2ecc71;
-    --green-dim:rgba(46,204,113,0.15);
-    --accent:   #5b8af5;
-    --radius:   6px;
-    --font:     -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-    --mono:     'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-  }
+:root {
+  --bg:      #08090d;
+  --bar:     #1c1e23;
+  --border:  rgba(207,222,229,0.15);
+  --fg:      #cfdee5;
+  --fg2:     #a7b3ba;
+  --fg3:     #6c7479;
+  --accent:  #ECFF3E;
+  --keyshadow: #373b40;
+  --font:    'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono:    'SF Mono', 'Fira Code', monospace;
+}
 
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 13px;
-    overflow: hidden;
-    user-select: none;
-    -webkit-app-region: no-drag;
-    position: relative;
-  }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
 
-  /* ── Control bar ─────────────────────────────────────────────────────── */
-  #bar {
-    display: flex;
-    align-items: center;
-    height: 54px;
-    background: var(--bar);
-    border-bottom: 1px solid var(--border);
-    padding: 0 10px 0 0;
-    gap: 6px;
-    -webkit-app-region: drag;
-  }
-  #bar > * { -webkit-app-region: no-drag; }
+/* ── Material Symbols ─────────────────────────────────────────────── */
+.ms {
+  font-family: 'Material Symbols Outlined';
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 400;
+  font-style: normal;
+  display: block;
+  -webkit-font-smoothing: antialiased;
+}
 
-  .traffic-gap { width: 78px; flex-shrink: 0; -webkit-app-region: drag; }
+/* ── Top bar ──────────────────────────────────────────────────────── */
+#top-bar {
+  display: flex;
+  align-items: center;
+  height: 54px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+  -webkit-app-region: drag;
+}
+#top-bar > * { -webkit-app-region: no-drag; }
 
-  /* URL input group */
-  .url-group {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-    gap: 4px;
-  }
-  .url-wrap {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-  }
-  #url-input {
-    width: 100%;
-    height: 30px;
-    background: #0a0a0a;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-hi);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 0 32px 0 10px;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  #url-input::placeholder { color: var(--text-dim); }
-  #url-input:focus { border-color: var(--accent); }
+.traffic-gap {
+  width: 80px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
 
-  /* Go button — lives inside the URL input */
-  #go-btn {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--text-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.1s, color 0.1s;
-  }
-  #go-btn:hover  { background: var(--hover); color: var(--text-hi); }
-  #go-btn:active { background: var(--active); }
+.url-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  /* Generic buttons */
-  button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    height: 30px;
-    padding: 0 10px;
-    border: none;
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    outline: none;
-    white-space: nowrap;
-    transition: background 0.1s, color 0.1s;
-  }
-  button:hover  { background: var(--hover); color: var(--text-hi); }
-  button:active { background: var(--active); }
-  button:disabled { opacity: 0.3; cursor: default; }
+/* URL pill: dark inner container, max 720px */
+.url-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 7px 8px;
+  transition: border-color 0.15s;
+}
+.url-pill:focus-within {
+  border-color: var(--accent);
+}
 
-  .icon-btn { width: 30px; padding: 0; font-size: 15px; }
+.url-icon {
+  display: flex;
+  align-items: center;
+  color: var(--fg3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+.url-icon:hover { color: var(--fg); }
+.url-icon .ms { font-size: 20px; }
 
-  /* Separator */
-  .sep {
-    width: 1px;
-    height: 22px;
-    background: var(--border);
-    flex-shrink: 0;
-    margin: 0 2px;
-  }
+#url-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--fg2);
+  font-family: var(--mono);
+  font-size: 13px;
+  caret-color: var(--accent);
+  min-width: 0;
+}
+#url-input::placeholder { color: var(--fg3); }
+#url-input:focus { color: var(--fg); }
+#url-input::selection { background: rgba(236,255,62,0.25); }
 
-  /* ── Screenshot button ───────────────────────────────────────────────── */
-  #shot-btn { min-width: 60px; gap: 6px; }
+/* ── Bottom section (drawers + bar) ──────────────────────────────── */
+#bottom-section {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+}
 
-  /* ── Record button ───────────────────────────────────────────────────── */
-  #rec-btn {
-    gap: 6px;
-    min-width: 60px;
-  }
-  .rec-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    flex-shrink: 0;
-    transition: background 0.2s;
-  }
-  #rec-btn.active { color: var(--red); background: var(--red-dim); }
-  #rec-btn.active .rec-dot { background: var(--red); }
-  #rec-btn.active:hover { background: rgba(231,76,60,0.22); }
+/* ── Drawers ──────────────────────────────────────────────────────── */
+.drawer {
+  display: none;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 12px; /* same margins as #bottom-bar so cards are identical width */
+}
+.drawer.open {
+  display: block;
+  animation: drawerIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes drawerIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
 
-  /* Timer */
-  #timer {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--red);
-    min-width: 38px;
-    text-align: center;
-    opacity: 1;
-    transition: opacity 0.3s;
-  }
-  #timer.paused { opacity: 0.4; }
-  #timer.hidden { display: none; }
+.drawer-card {
+  background: var(--bar);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
 
-  /* Pause btn */
-  #pause-btn.hidden { display: none; }
-  #pause-btn.active { color: var(--accent); }
+/* ── Bottom bar ───────────────────────────────────────────────────── */
+#bottom-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 12px;
+  height: 60px;
+  background: var(--bar);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 8px;
+  justify-content: center;
+}
 
-  /* ── Scroll button ───────────────────────────────────────────────────── */
-  #scroll-btn { min-width: 78px; gap: 6px; }
-  #scroll-btn.active { color: var(--green); background: var(--green-dim); }
-  #scroll-btn.active:hover { background: rgba(46,204,113,0.22); }
+/* ── Side icon buttons (⌘ and ⚙) ─────────────────────────────────── */
+.side-btn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--fg3);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+.side-btn:hover  { background: var(--bg); color: var(--fg); }
+.side-btn:active { background: rgba(207,222,229,0.08); }
 
-  /* Speed */
-  .speed-wrap {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .speed-label { font-size: 11px; color: var(--text-dim); }
-  #speed-range {
-    -webkit-appearance: none;
-    width: 64px;
-    height: 3px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
-  }
-  #speed-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--text);
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  #speed-range:hover::-webkit-slider-thumb { background: var(--text-hi); }
+#shortcuts-btn { left: 7px; top: 50%; transform: translateY(-50%); color: var(--fg); }
+#cfg-btn       { right: 7px; top: 7px; }
 
-  /* ── Settings panel — overlays content, does not push it ─────────────── */
-  #settings-panel {
-    position: absolute;
-    top: 54px;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: var(--bar);
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.6);
-    height: 0;
-    overflow: hidden;
-    transition: height 0.2s ease;
-  }
-  #settings-panel.open { height: 360px; }
+/* ── Center controls (pill-center) ───────────────────────────────── */
+.bar-center {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
 
-  .settings-inner {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
-    padding: 18px 20px;
-  }
+/* ── Pill action buttons ──────────────────────────────────────────── */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent; /* blends into bar at rest */
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.pill-btn:hover  { background: var(--bg); }
+.pill-btn:active { background: rgba(207,222,229,0.08); }
 
-  .s-section h4 {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-    margin-bottom: 12px;
-  }
+/* icon inside button — dim (fg3) per Figma; label stays fg via pill-btn color */
+.pill-btn .ms { font-size: 20px; color: var(--fg3); }
+.pill-btn .svg-icon { color: var(--fg3); }
 
-  .s-row {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin-bottom: 10px;
-  }
-  .s-row label {
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-  .s-row input[type="number"],
-  .s-row input[type="text"],
-  .s-row select {
-    height: 28px;
-    background: #0a0a0a;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--text-hi);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 0 8px;
-    outline: none;
-    width: 100%;
-  }
-  .s-row select { cursor: pointer; }
-  .s-row input:focus, .s-row select:focus { border-color: var(--accent); }
-  .s-row input[type="number"] { width: 80px; }
+/* label inside button: add 8px side padding */
+.btn-label {
+  padding: 0 8px;
+  line-height: 1;
+}
 
-  .dir-row {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-  }
-  .dir-row input { flex: 1; font-size: 11px; }
-  .dir-row button { height: 28px; font-size: 11px; padding: 0 8px; flex-shrink: 0; }
+/* key badge */
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px 1px;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--fg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bar); /* same as bar = transparent */
+  box-shadow: inset 0 -2px 0 var(--keyshadow);
+  flex-shrink: 0;
+}
 
-  .s-row input[type="range"] {
-    -webkit-appearance: none;
-    height: 3px;
-    background: var(--border);
-    border: none;
-    border-radius: 2px;
-    padding: 0;
-    width: 100%;
-    cursor: pointer;
-  }
-  .s-row input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: var(--text);
-  }
+/* ── Icon-only button (pause) ─────────────────────────────────────── */
+.icon-only-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--fg3);
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-only-btn:hover  { background: var(--bg); color: var(--fg); }
+#pause-btn.hidden { display: none; }
 
-  .shortcuts-list { font-size: 11px; line-height: 2; color: var(--text-dim); }
-  .shortcuts-list kbd {
-    font-family: var(--mono);
-    color: var(--text-hi);
-    background: #1a1a1a;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 10px;
-    border: 1px solid var(--border);
-  }
+/* ── Record active state ──────────────────────────────────────────── */
+#rec-btn.recording {
+  background: rgba(236,255,62,0.15);
+}
+#rec-btn.recording .btn-label {
+  color: var(--accent);
+}
+#rec-btn.recording .ms {
+  color: var(--accent);
+}
+#rec-btn.recording .rec-timer {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  opacity: 0.8;
+  padding-left: 2px;
+}
 
-  .settings-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 10px 20px;
-    border-top: 1px solid var(--border);
-  }
-  .settings-footer button {
-    height: 28px;
-    font-size: 12px;
-  }
-  #apply-btn {
-    background: var(--accent);
-    color: #fff;
-  }
-  #apply-btn:hover { background: #4a79e4; }
+.rec-timer { display: none; }
+#rec-btn.recording .rec-timer { display: inline; }
+#rec-btn.recording .rec-badge { display: none; }
 
-  /* ── Toast ───────────────────────────────────────────────────────────── */
-  #toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(10px);
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: var(--text-hi);
-    font-size: 12px;
-    padding: 8px 16px;
-    border-radius: 20px;
-    pointer-events: auto;
-    opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
-    cursor: pointer;
-    z-index: 999;
-    max-width: 80%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  #toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-  #toast.error { border-color: rgba(231,76,60,0.4); color: #ff7b6f; }
+/* ── Scroll active state ──────────────────────────────────────────── */
+#scroll-btn.scrolling {
+  background: rgba(108,116,121,0.35);
+}
 
-  /* ── Shortcuts modal ─────────────────────────────────────────────────── */
-  #shortcuts-modal {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 300;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,0.55);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  #shortcuts-modal.open { display: flex; }
+/* ── Divider ──────────────────────────────────────────────────────── */
+.bar-div {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
 
-  .shortcuts-card {
-    background: #181818;
-    border: 1px solid #2a2a2a;
-    border-radius: 12px;
-    padding: 24px 28px 20px;
-    min-width: 300px;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.8);
-  }
-  .shortcuts-card h3 {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--text-dim);
-    margin-bottom: 16px;
-  }
-  .sc-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 32px;
-    padding: 7px 0;
-    border-bottom: 1px solid #222;
-  }
-  .sc-row:last-child { border-bottom: none; }
-  .sc-divider {
-    height: 1px;
-    background: #252525;
-    margin: 10px 0;
-  }
-  .sc-key {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text-hi);
-    background: #242424;
-    padding: 3px 8px;
-    border-radius: 5px;
-    border: 1px solid #333;
-    white-space: nowrap;
-  }
-  .sc-desc {
-    font-size: 12px;
-    color: var(--text-dim);
-  }
-  .sc-hint {
-    font-size: 10px;
-    color: #3a3a3a;
-    text-align: center;
-    margin-top: 14px;
-    font-family: var(--mono);
-  }
+/* ── Speed slider (custom — matches Figma exactly) ────────────────── */
+.speed-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+.speed-label {
+  font-size: 15px;
+  color: var(--fg3);
+  white-space: nowrap;
+}
+/* custom track */
+#speed-track {
+  position: relative;
+  width: 96px;
+  height: 16px;
+  border-radius: 99px;
+  background: rgba(108,116,121,0.35);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+/* filled portion — grows from left, contains the handle */
+#speed-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 16px;
+  min-width: 16px;
+  border-radius: 999px;
+  background: #6c7479;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 1px;
+}
+/* white circle handle sits at right edge of fill */
+#speed-handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fg);
+  box-shadow: 1px 2px 4px 0px rgba(8,9,13,0.15);
+  flex-shrink: 0;
+}
+
+/* ── Settings drawer card ─────────────────────────────────────────── */
+.settings-inner {
+  padding: 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto auto auto;
+  gap: 24px;
+}
+
+.s-title {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1;
+}
+
+.s-col-l { grid-column: 1; }
+.s-col-r { grid-column: 2; }
+.s-row-2 { grid-row: 2; }
+.s-row-3 { grid-row: 3; align-self: start; }
+.s-row-4 { grid-row: 4; align-self: start; }
+.s-footer { grid-column: 2; grid-row: 4; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+.s-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.s-section-title {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--fg3);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.s-fields-row {
+  display: flex;
+  gap: 12px;
+}
+
+.s-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.s-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.s-input {
+  background: var(--bg);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  padding: 8px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.s-input:focus { border-color: var(--accent); }
+.s-input::placeholder { color: var(--fg3); }
+select.s-input { cursor: pointer; }
+
+.s-input-row {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.s-input-row .s-input {
+  border-radius: 0;
+  border: none;
+  flex: 1;
+}
+.s-browse-btn {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  color: var(--fg3);
+  font-family: var(--font);
+  font-size: 15px;
+  cursor: pointer;
+  outline: none;
+  transition: color 0.12s;
+  white-space: nowrap;
+}
+.s-browse-btn:hover { color: var(--fg); }
+
+/* Quality slider (custom — same design as speed slider) */
+.s-quality-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.s-quality-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.q-track {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  border-radius: 99px;
+  background: rgba(108,116,121,0.35);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.q-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 16px;
+  min-width: 16px;
+  border-radius: 999px;
+  background: #6c7479;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 1px;
+}
+.q-handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fg);
+  box-shadow: 1px 2px 4px 0px rgba(8,9,13,0.15);
+  flex-shrink: 0;
+}
+
+/* ── Settings footer buttons ──────────────────────────────────────── */
+.btn-cancel {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(108,116,121,0.35);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s;
+}
+.btn-cancel:hover { background: rgba(108,116,121,0.5); }
+
+.btn-apply {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s;
+}
+.btn-apply:hover { background: #d8f036; }
+
+/* ── Shortcuts drawer card ────────────────────────────────────────── */
+/* Matches Figma: flex-col gap-24px, py-40px, px centers to ~480px content */
+.shortcuts-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 40px max(24px, calc((100% - 480px) / 2));
+}
+
+.sc-title {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1;
+}
+
+/* Each group is a flex-col of rows (no gap — rows use py-8px + border-b) */
+.sc-group { display: flex; flex-direction: column; width: 100%; }
+
+.sc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+}
+.sc-row:last-child { border-bottom: none; }
+
+.sc-desc {
+  flex: 1 0 0;
+  font-size: 15px;
+  color: var(--fg);
+  min-width: 0;
+}
+
+.sc-keys {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* "+" separator between key badges */
+.sc-plus {
+  font-size: 15px;
+  color: var(--fg3);
+  padding: 0 1px;
+}
+
+/* Key badge: matches Figma h-25px rounded-6px, text fg2 (#a7b3ba) */
+.sc-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 25px;
+  min-width: 20px;
+  padding: 0 8px 1px;
+  font-family: var(--font);
+  font-size: 15px;
+  color: var(--fg2);  /* #a7b3ba — NOT fg3 */
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bar);
+  box-shadow: inset 0 -2px 0 var(--keyshadow);
+  white-space: nowrap;
+}
+
+/* "Got it" button — identical style to Cancel, left-aligned */
+.btn-gotit {
+  align-self: flex-start;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(108,116,121,0.35);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 400;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.12s;
+}
+.btn-gotit:hover { background: rgba(108,116,121,0.5); }
+
+/* ── Toast ────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(28,30,35,0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  cursor: pointer;
+  z-index: 999;
+  max-width: 80%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#toast.show  { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.error { border-color: rgba(231,76,60,0.5); color: #ff7b6f; }
 </style>
 </head>
 <body>
 
-<!-- ── Control bar ─────────────────────────────────────────────────────────── -->
-<div id="bar">
+<!-- ── Top bar ──────────────────────────────────────────────────────────────── -->
+<div id="top-bar">
   <div class="traffic-gap"></div>
-
-  <!-- Refresh — lives before the URL input -->
-  <button id="refresh-btn" class="icon-btn" title="Refresh  ⌘⇧F">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-      <path d="M3 3v5h5"/>
-    </svg>
-  </button>
-
-  <!-- URL — go arrow is inside the input -->
-  <div class="url-group">
-    <div class="url-wrap">
-      <input id="url-input" type="text" placeholder="lusion.co" spellcheck="false" />
-      <button id="go-btn" title="Navigate (Enter)">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-        </svg>
+  <div class="url-area">
+    <div class="url-pill">
+      <button id="refresh-btn" class="url-icon" title="Refresh (⌘R)">
+        <span class="ms">refresh</span>
+      </button>
+      <input id="url-input" type="text" placeholder="mesh3d.gallery" spellcheck="false" autocomplete="off" />
+      <button id="go-btn" class="url-icon" title="Navigate (Enter)">
+        <span class="ms">arrow_forward</span>
       </button>
     </div>
   </div>
-
-  <div class="sep"></div>
-
-  <!-- Screenshot — first action button -->
-  <button id="shot-btn" title="Screenshot  ⌘⇧M">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-      <circle cx="12" cy="13" r="3"/>
-    </svg>
-    <span>SNAP</span>
-  </button>
-
-  <div class="sep"></div>
-
-  <!-- Record -->
-  <button id="rec-btn" title="Record  ⌘⇧R">
-    <span class="rec-dot"></span>
-    <span id="rec-label">REC</span>
-  </button>
-  <button id="pause-btn" class="icon-btn hidden" title="Pause / Resume  ⌘⇧P">
-    <svg id="pause-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
-    </svg>
-  </button>
-  <span id="timer" class="hidden">0:00</span>
-
-  <div class="sep"></div>
-
-  <!-- Scroll -->
-  <button id="scroll-btn" title="Toggle scroll  ⌘⇧↓">
-    <svg id="scroll-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <polygon points="5 3 19 12 5 21 5 3"/>
-    </svg>
-    <span id="scroll-label">SCROLL</span>
-  </button>
-  <div class="speed-wrap">
-    <span class="speed-label">spd</span>
-    <input id="speed-range" type="range" min="1" max="30" value="2" title="Scroll speed" />
-  </div>
-
-  <div class="sep"></div>
-
-  <!-- Settings — Lucide cog icon -->
-  <button id="cfg-btn" class="icon-btn" title="Settings">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-    </svg>
-  </button>
 </div>
 
-<!-- ── Settings panel — absolute overlay, does not push content ────────────── -->
-<div id="settings-panel">
-  <div class="settings-inner">
+<!-- ── Bottom section ───────────────────────────────────────────────────────── -->
+<div id="bottom-section">
 
-    <div class="s-section">
-      <h4>Canvas</h4>
-      <div class="s-row">
-        <label>Width (px)</label>
-        <input type="number" id="s-width" min="320" max="7680" step="1" />
-      </div>
-      <div class="s-row">
-        <label>Height (px)</label>
-        <input type="number" id="s-height" min="200" max="4320" step="1" />
+  <!-- Settings drawer -->
+  <div id="settings-drawer" class="drawer">
+    <div class="drawer-card">
+      <div class="settings-inner">
+
+        <div class="s-title">Settings</div>
+
+        <!-- Canvas (col 1, row 2) -->
+        <div class="s-col-l s-row-2 s-section">
+          <div class="s-section-title">Canvas</div>
+          <div class="s-fields-row">
+            <div class="s-field">
+              <div class="s-label">Width [px]</div>
+              <input type="number" id="s-width" class="s-input" min="320" max="7680" />
+            </div>
+            <div class="s-field">
+              <div class="s-label">Height [px]</div>
+              <input type="number" id="s-height" class="s-input" min="200" max="4320" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Video (col 1, row 3) -->
+        <div class="s-col-l s-row-3 s-section">
+          <div class="s-section-title">Video</div>
+          <div class="s-fields-row">
+            <div class="s-field" style="flex:2">
+              <div class="s-label">Codec</div>
+              <select id="s-codec" class="s-input">
+                <option value="hevc_hw">Apple HEVC (hw)</option>
+                <option value="h264_hw">Apple H.264 (hw)</option>
+                <option value="h264">H.264 — software</option>
+                <option value="h265">H.265 — software</option>
+              </select>
+            </div>
+            <div class="s-field" style="flex:1">
+              <div class="s-label">Framerate</div>
+              <select id="s-fps" class="s-input">
+                <option value="24">24 fps</option>
+                <option value="30">30 fps</option>
+                <option value="60">60 fps</option>
+              </select>
+            </div>
+          </div>
+          <div class="s-quality-wrap">
+            <div class="s-quality-label" id="quality-label">Quality <span id="quality-val"></span></div>
+            <div class="q-track" id="q-video-track">
+              <div class="q-fill" id="q-video-fill"><div class="q-handle"></div></div>
+            </div>
+          </div>
+          <div class="s-field">
+            <div class="s-label">Save directory</div>
+            <div class="s-input-row">
+              <input type="text" id="s-videodir" class="s-input" readonly placeholder="/Users/…/Desktop" />
+              <button id="browse-video" class="s-browse-btn">Browse</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screenshot (col 2, row 3) -->
+        <div class="s-col-r s-row-3 s-section">
+          <div class="s-section-title">Screenshot</div>
+          <div class="s-field">
+            <div class="s-label">Format</div>
+            <select id="s-ssfmt" class="s-input">
+              <option value="webp">WebP</option>
+              <option value="png">PNG</option>
+              <option value="jpeg">JPEG</option>
+            </select>
+          </div>
+          <div class="s-quality-wrap">
+            <div class="s-quality-label">Quality <span id="ssq-val"></span></div>
+            <div class="q-track" id="q-ss-track">
+              <div class="q-fill" id="q-ss-fill"><div class="q-handle"></div></div>
+            </div>
+          </div>
+          <div class="s-field">
+            <div class="s-label">Save directory</div>
+            <div class="s-input-row">
+              <input type="text" id="s-ssdir" class="s-input" readonly placeholder="/Users/…/Desktop" />
+              <button id="browse-ss" class="s-browse-btn">Browse</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer buttons (col 2, row 4) -->
+        <div class="s-footer">
+          <button id="cancel-settings-btn" class="btn-cancel">Cancel</button>
+          <button id="apply-btn" class="btn-apply">Apply settings</button>
+        </div>
+
       </div>
     </div>
+  </div>
 
-    <div class="s-section">
-      <h4>Video</h4>
-      <div class="s-row">
-        <label>Codec</label>
-        <select id="s-codec">
-          <option value="hevc_hw">Apple HEVC — hardware (recommended)</option>
-          <option value="h264_hw">Apple H.264 — hardware</option>
-          <option value="h264">H.264 — software</option>
-          <option value="h265">H.265 — software</option>
-        </select>
+  <!-- Shortcuts drawer -->
+  <div id="shortcuts-drawer" class="drawer">
+    <div class="drawer-card">
+      <div class="shortcuts-inner">
+        <p class="sc-title">Shortcuts</p>
+        <!-- Group 1 -->
+        <div class="sc-group">
+          <div class="sc-row">
+            <span class="sc-desc">Scroll toggle</span>
+            <div class="sc-keys"><span class="sc-key">Space</span></div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Screenshot</span>
+            <div class="sc-keys"><span class="sc-key">S</span></div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Start/stop record</span>
+            <div class="sc-keys"><span class="sc-key">R</span></div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Refresh page</span>
+            <div class="sc-keys">
+              <span class="sc-key">⌘</span>
+              <span class="sc-plus">+</span>
+              <span class="sc-key">R</span>
+            </div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Stop scroll &amp; record</span>
+            <div class="sc-keys"><span class="sc-key">Esc</span></div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Show/hide shortcuts</span>
+            <div class="sc-keys">
+              <span class="sc-key">⌘</span>
+              <span class="sc-plus">+</span>
+              <span class="sc-key">K</span>
+            </div>
+          </div>
+        </div>
+        <!-- Group 2 -->
+        <div class="sc-group">
+          <div class="sc-row">
+            <span class="sc-desc">Grab URL from browser</span>
+            <div class="sc-keys">
+              <span class="sc-key">⌃</span>
+              <span class="sc-plus">+</span>
+              <span class="sc-key">G</span>
+            </div>
+          </div>
+          <div class="sc-row">
+            <span class="sc-desc">Next browser tab</span>
+            <div class="sc-keys">
+              <span class="sc-key">⌃</span>
+              <span class="sc-plus">+</span>
+              <span class="sc-key">N</span>
+            </div>
+          </div>
+        </div>
+        <button id="close-shortcuts-btn" class="btn-gotit">Got it</button>
       </div>
-      <div class="s-row">
-        <label>Framerate</label>
-        <select id="s-fps">
-          <option value="24">24 fps</option>
-          <option value="30">30 fps</option>
-          <option value="60">60 fps</option>
-        </select>
-      </div>
-      <div class="s-row">
-        <label id="quality-label">Quality <span id="quality-val"></span></label>
-        <input type="range" id="s-quality" min="1" max="100" step="1" />
-      </div>
-      <div class="s-row">
-        <label>Save directory</label>
-        <div class="dir-row">
-          <input type="text" id="s-videodir" readonly />
-          <button id="browse-video">Browse</button>
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div id="bottom-bar">
+
+    <!-- Left: shortcuts trigger -->
+    <button id="shortcuts-btn" class="side-btn" title="Shortcuts (⌘K)">
+      <span class="ms">keyboard_command_key</span>
+    </button>
+
+    <!-- Center controls -->
+    <div class="bar-center">
+
+      <!-- Snap -->
+      <button id="shot-btn" class="pill-btn" title="Screenshot (S)">
+        <span class="ms">photo_camera</span>
+        <span class="btn-label">Snap</span>
+        <span class="key-badge">S</span>
+      </button>
+
+      <!-- Record -->
+      <button id="rec-btn" class="pill-btn" title="Record / Stop (R)">
+        <span class="ms" id="rec-icon">brightness_1</span>
+        <span class="btn-label" id="rec-label">Record</span>
+        <span class="rec-timer" id="rec-timer">00:00</span>
+        <span class="key-badge rec-badge">R</span>
+      </button>
+
+      <!-- Pause (hidden when not recording) -->
+      <button id="pause-btn" class="icon-only-btn hidden" title="Pause / Resume">
+        <span class="ms" id="pause-icon">pause</span>
+      </button>
+
+      <!-- Scroll -->
+      <button id="scroll-btn" class="pill-btn" title="Toggle scroll (Space)">
+        <svg id="scroll-icon" class="svg-icon" width="20" height="20" viewBox="0 0 16.6667 16.6667" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <path d="M8.33333 11.6667L11.6667 8.33333L10.5 7.16667L9.16667 8.5V5H7.5V8.5L6.16667 7.16667L5 8.33333L8.33333 11.6667ZM8.33333 16.6667C7.18055 16.6667 6.09722 16.4479 5.08333 16.0104C4.06944 15.5729 3.1875 14.9792 2.4375 14.2292C1.6875 13.4792 1.09375 12.5972 0.65625 11.5833C0.21875 10.5694 0 9.48611 0 8.33333C0 7.18055 0.21875 6.09722 0.65625 5.08333C1.09375 4.06944 1.6875 3.1875 2.4375 2.4375C3.1875 1.6875 4.06944 1.09375 5.08333 0.65625C6.09722 0.21875 7.18055 0 8.33333 0C9.48611 0 10.5694 0.21875 11.5833 0.65625C12.5972 1.09375 13.4792 1.6875 14.2292 2.4375C14.9792 3.1875 15.5729 4.06944 16.0104 5.08333C16.4479 6.09722 16.6667 7.18055 16.6667 8.33333C16.6667 9.48611 16.4479 10.5694 16.0104 11.5833C15.5729 12.5972 14.9792 13.4792 14.2292 14.2292C13.4792 14.9792 12.5972 15.5729 11.5833 16.0104C10.5694 16.4479 9.48611 16.6667 8.33333 16.6667Z" fill="currentColor"/>
+        </svg>
+        <span class="btn-label" id="scroll-label">Scroll</span>
+        <span class="key-badge" id="scroll-badge">Space</span>
+      </button>
+
+      <!-- Speed — custom slider matching Figma design -->
+      <div class="speed-wrap">
+        <span class="speed-label">Speed</span>
+        <div id="speed-track">
+          <div id="speed-fill">
+            <div id="speed-handle"></div>
+          </div>
         </div>
       </div>
+
     </div>
 
-    <div class="s-section">
-      <h4>Screenshot</h4>
-      <div class="s-row">
-        <label>Format</label>
-        <select id="s-ssfmt">
-          <option value="webp">WebP</option>
-          <option value="png">PNG</option>
-          <option value="jpeg">JPEG</option>
-        </select>
-      </div>
-      <div class="s-row">
-        <label>Quality (<span id="ssq-val"></span>)</label>
-        <input type="range" id="s-ssq" min="50" max="100" step="1" />
-      </div>
-      <div class="s-row">
-        <label>Save directory</label>
-        <div class="dir-row">
-          <input type="text" id="s-ssdir" readonly />
-          <button id="browse-ss">Browse</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="s-section">
-      <h4>Shortcuts</h4>
-      <div class="shortcuts-list">
-        <div><kbd>Space</kbd> — Scroll toggle</div>
-        <div><kbd>R</kbd> — Record start/stop</div>
-        <div><kbd>S</kbd> — Screenshot</div>
-        <div><kbd>⌘R</kbd> — Refresh page</div>
-        <div><kbd>Esc</kbd> — Stop scroll &amp; rec</div>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #252525"></div>
-        <div><kbd>^G</kbd> — Grab URL from browser</div>
-        <div><kbd>^N</kbd> — Next browser tab</div>
-        <div style="font-size:10px;color:#444;margin-top:6px">^G / ^N work from any app</div>
-      </div>
-    </div>
+    <!-- Right: settings -->
+    <button id="cfg-btn" class="side-btn" title="Settings">
+      <span class="ms">settings</span>
+    </button>
 
   </div>
 
-  <div class="settings-footer">
-    <button id="close-settings-btn">Cancel</button>
-    <button id="apply-btn">Apply</button>
-  </div>
 </div>
 
-<!-- ── Shortcuts modal ──────────────────────────────────────────────────────── -->
-<div id="shortcuts-modal">
-  <div class="shortcuts-card">
-    <h3>Shortcuts</h3>
-    <div class="sc-row"><span class="sc-key">Space</span><span class="sc-desc">Toggle scroll</span></div>
-    <div class="sc-row"><span class="sc-key">R</span><span class="sc-desc">Record start / stop</span></div>
-    <div class="sc-row"><span class="sc-key">S</span><span class="sc-desc">Screenshot</span></div>
-    <div class="sc-row"><span class="sc-key">⌘R</span><span class="sc-desc">Refresh page</span></div>
-    <div class="sc-row"><span class="sc-key">Esc</span><span class="sc-desc">Stop scroll &amp; recording</span></div>
-    <div class="sc-divider"></div>
-    <div class="sc-row"><span class="sc-key">^G</span><span class="sc-desc">Grab URL from browser</span></div>
-    <div class="sc-row"><span class="sc-key">^N</span><span class="sc-desc">Next browser tab</span></div>
-    <p class="sc-hint">⌘K to close</p>
-  </div>
-</div>
-
-<!-- ── Toast ────────────────────────────────────────────────────────────────── -->
+<!-- ── Toast ─────────────────────────────────────────────────────────────────── -->
 <div id="toast"></div>
 
 <script>
@@ -612,40 +893,86 @@ let isRecording = false;
 let isPaused    = false;
 let isScrolling = false;
 let toastTimer  = null;
-let timerInterval = null;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const urlInput    = document.getElementById('url-input');
-const goBtn       = document.getElementById('go-btn');
-const recBtn      = document.getElementById('rec-btn');
-const recLabel    = document.getElementById('rec-label');
-const pauseBtn    = document.getElementById('pause-btn');
-const pauseIcon   = document.getElementById('pause-icon');
-const timerEl     = document.getElementById('timer');
-const scrollBtn   = document.getElementById('scroll-btn');
-const scrollIcon  = document.getElementById('scroll-icon');
-const scrollLabel = document.getElementById('scroll-label');
-const speedRange  = document.getElementById('speed-range');
-const refreshBtn  = document.getElementById('refresh-btn');
-const shotBtn     = document.getElementById('shot-btn');
-const cfgBtn      = document.getElementById('cfg-btn');
-const panel       = document.getElementById('settings-panel');
-const toast       = document.getElementById('toast');
+const urlInput     = document.getElementById('url-input');
+const refreshBtn   = document.getElementById('refresh-btn');
+const goBtn        = document.getElementById('go-btn');
+const shotBtn      = document.getElementById('shot-btn');
+const recBtn       = document.getElementById('rec-btn');
+const recLabel     = document.getElementById('rec-label');
+const recIcon      = document.getElementById('rec-icon');
+const recTimer     = document.getElementById('rec-timer');
+const pauseBtn     = document.getElementById('pause-btn');
+const pauseIcon    = document.getElementById('pause-icon');
+const scrollBtn    = document.getElementById('scroll-btn');
+const scrollLabel  = document.getElementById('scroll-label');
+const speedTrack   = document.getElementById('speed-track');
+const speedFill    = document.getElementById('speed-fill');
+const cfgBtn       = document.getElementById('cfg-btn');
+const shortcutsBtn = document.getElementById('shortcuts-btn');
+const settingsDrw  = document.getElementById('settings-drawer');
+const shortcutsDrw = document.getElementById('shortcuts-drawer');
+const toast        = document.getElementById('toast');
 
-// Settings inputs
+// Settings refs
 const sWidth      = document.getElementById('s-width');
 const sHeight     = document.getElementById('s-height');
 const sCodec      = document.getElementById('s-codec');
 const sFps        = document.getElementById('s-fps');
-const sQuality    = document.getElementById('s-quality');
 const qualityVal  = document.getElementById('quality-val');
 const qualityLbl  = document.getElementById('quality-label');
 const sVideodir   = document.getElementById('s-videodir');
 const sSsfmt      = document.getElementById('s-ssfmt');
-const sSsq        = document.getElementById('s-ssq');
 const ssqVal      = document.getElementById('ssq-val');
 const sSsdir      = document.getElementById('s-ssdir');
+const scrollBadge = document.getElementById('scroll-badge');
+const qVideoTrack = document.getElementById('q-video-track');
+const qVideoFill  = document.getElementById('q-video-fill');
+const qSsTrack    = document.getElementById('q-ss-track');
+const qSsFill     = document.getElementById('q-ss-fill');
 
+// ── Generic slider factory ────────────────────────────────────────────────────
+// Creates a custom div-based slider (Figma design: 16px pill track, filled
+// portion grows from left with handle circle at right edge of fill).
+function makeSlider(trackEl, fillEl, min, max, onChange) {
+  let val = min;
+  function setValue(v) {
+    val = Math.max(min, Math.min(max, Math.round(v)));
+    const trackW = trackEl.getBoundingClientRect().width;
+    if (trackW > 16) {
+      const prop = (val - min) / (max - min);
+      fillEl.style.width = (16 + prop * (trackW - 16)) + 'px';
+    }
+    return val;
+  }
+  function drag(e) {
+    const rect = trackEl.getBoundingClientRect();
+    const prop = Math.max(0, Math.min(1, (e.clientX - rect.left - 8) / (rect.width - 16)));
+    const newVal = Math.round(min + prop * (max - min));
+    if (newVal !== val) { setValue(newVal); onChange(val); }
+  }
+  trackEl.addEventListener('mousedown', e => {
+    drag(e);
+    const onMove = e2 => drag(e2);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', () => window.removeEventListener('mousemove', onMove), { once: true });
+  });
+  return { setValue, getVal: () => val };
+}
+
+// ── Slider instances ──────────────────────────────────────────────────────────
+const speedSlider = makeSlider(speedTrack, speedFill, 1, 30, v => window.api.setCfg({ scrollSpeed: v }));
+
+const videoQualitySlider = makeSlider(qVideoTrack, qVideoFill, 1, 100, v => {
+  updateQualityLabel(sCodec.value, v);
+});
+
+const ssQualitySlider = makeSlider(qSsTrack, qSsFill, 50, 100, v => {
+  ssqVal.textContent = v;
+});
+
+// ── Quality label helper ──────────────────────────────────────────────────────
 function updateQualityLabel(codec, val) {
   const hw = codec === 'hevc_hw' || codec === 'h264_hw';
   qualityLbl.firstChild.textContent = hw ? 'Quality ' : 'Quality (CRF) ';
@@ -654,30 +981,31 @@ function updateQualityLabel(codec, val) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.api.getCfg().then(cfg => {
-  sWidth.value     = cfg.width;
-  sHeight.value    = cfg.height;
-  sCodec.value     = cfg.codec || 'hevc_hw';
-  sFps.value       = cfg.fps;
-  sQuality.value   = cfg.quality ?? 65;
-  sVideodir.value  = cfg.videoDir;
-  sSsfmt.value     = cfg.ssFormat;
-  sSsq.value       = cfg.ssQuality;
+  sWidth.value       = cfg.width;
+  sHeight.value      = cfg.height;
+  sCodec.value       = cfg.codec || 'hevc_hw';
+  sFps.value         = cfg.fps;
+  sVideodir.value    = cfg.videoDir;
+  sSsfmt.value       = cfg.ssFormat;
   ssqVal.textContent = cfg.ssQuality;
-  sSsdir.value     = cfg.ssDir;
-  speedRange.value = cfg.scrollSpeed;
-  updateQualityLabel(sCodec.value, sQuality.value);
+  sSsdir.value       = cfg.ssDir;
+  speedSlider.setValue(cfg.scrollSpeed || 2);
+  // Quality sliders are in hidden drawer — store values; fill computed on open
+  videoQualitySlider.setValue(cfg.quality ?? 65);
+  ssQualitySlider.setValue(cfg.ssQuality);
+  updateQualityLabel(sCodec.value, cfg.quality ?? 65);
 });
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-function navigate() {
+function doNavigate() {
   const url = urlInput.value.trim();
   if (url) window.api.navigate(url);
 }
-goBtn.addEventListener('click', navigate);
-urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); });
+goBtn.addEventListener('click', doNavigate);
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') doNavigate(); });
+refreshBtn.addEventListener('click', () => window.api.refresh());
 
 window.api.on('navigated', url => {
-  // Extract domain for display
   try {
     const u = new URL(url);
     urlInput.value = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname : '');
@@ -692,30 +1020,19 @@ window.api.on('rec-state', ({ recording, paused }) => {
   isRecording = recording;
   isPaused    = paused;
 
-  recBtn.classList.toggle('active', recording);
-  recLabel.textContent = recording ? 'STOP' : 'REC';
-
+  recBtn.classList.toggle('recording', recording);
+  recIcon.textContent  = recording ? 'stop_circle' : 'brightness_1';
+  recLabel.textContent = recording ? 'Stop' : 'Record';
   pauseBtn.classList.toggle('hidden', !recording);
-  timerEl.classList.toggle('hidden', !recording);
-  timerEl.classList.toggle('paused', paused);
-
-  // Swap pause icon: playing → pause bars, paused → play triangle
-  if (paused) {
-    pauseIcon.setAttribute('fill', 'currentColor');
-    pauseIcon.removeAttribute('stroke');
-    pauseIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-  } else {
-    pauseIcon.setAttribute('fill', 'none');
-    pauseIcon.setAttribute('stroke', 'currentColor');
-    pauseIcon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
-  }
-  pauseBtn.classList.toggle('active', paused);
+  pauseIcon.textContent = paused ? 'play_arrow' : 'pause';
+  if (recording) recTimer.style.display = '';
+  else { recTimer.style.display = 'none'; recTimer.textContent = '00:00'; }
 });
 
 window.api.on('rec-timer', secs => {
   const m = String(Math.floor(secs / 60)).padStart(2, '0');
   const s = String(secs % 60).padStart(2, '0');
-  timerEl.textContent = `${m}:${s}`;
+  recTimer.textContent = `${m}:${s}`;
 });
 
 window.api.on('recording-saved', filepath => {
@@ -724,29 +1041,12 @@ window.api.on('recording-saved', filepath => {
 
 // ── Scroll ────────────────────────────────────────────────────────────────────
 scrollBtn.addEventListener('click', () => window.api.toggleScroll());
-refreshBtn.addEventListener('click',() => window.api.refresh());
-
-speedRange.addEventListener('input', () => {
-  window.api.setCfg({ scrollSpeed: Number(speedRange.value) });
-});
 
 window.api.on('scroll-state', active => {
   isScrolling = active;
-  scrollBtn.classList.toggle('active', active);
-  if (active) {
-    scrollIcon.setAttribute('fill', 'none');
-    scrollIcon.setAttribute('stroke', 'currentColor');
-    scrollIcon.setAttribute('stroke-width', '2');
-    scrollIcon.setAttribute('stroke-linecap', 'round');
-    scrollIcon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
-  } else {
-    scrollIcon.setAttribute('fill', 'currentColor');
-    scrollIcon.removeAttribute('stroke');
-    scrollIcon.removeAttribute('stroke-width');
-    scrollIcon.removeAttribute('stroke-linecap');
-    scrollIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
-  }
-  scrollLabel.textContent = active ? 'STOP' : 'SCROLL';
+  scrollBtn.classList.toggle('scrolling', active);
+  scrollLabel.textContent = active ? 'Pause Scroll' : 'Scroll';
+  scrollBadge.style.display = active ? 'none' : '';
 });
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
@@ -759,12 +1059,17 @@ window.api.on('screenshot-saved', filepath => {
 cfgBtn.addEventListener('click', () => window.api.toggleSettings());
 
 window.api.on('settings-state', open => {
-  panel.classList.toggle('open', open);
+  settingsDrw.classList.toggle('open', open);
+  if (open) {
+    // Drawer was hidden — re-compute fill widths now track has measurable width
+    requestAnimationFrame(() => {
+      videoQualitySlider.setValue(videoQualitySlider.getVal());
+      ssQualitySlider.setValue(ssQualitySlider.getVal());
+    });
+  }
 });
 
-sCodec.addEventListener('change', () => updateQualityLabel(sCodec.value, sQuality.value));
-sQuality.addEventListener('input', () => updateQualityLabel(sCodec.value, sQuality.value));
-sSsq.addEventListener('input', () => { ssqVal.textContent = sSsq.value; });
+sCodec.addEventListener('change', () => updateQualityLabel(sCodec.value, videoQualitySlider.getVal()));
 
 document.getElementById('browse-video').addEventListener('click', async () => {
   const dir = await window.api.pickDir();
@@ -781,44 +1086,47 @@ document.getElementById('apply-btn').addEventListener('click', () => {
     height:    Number(sHeight.value),
     codec:     sCodec.value,
     fps:       Number(sFps.value),
-    quality:   Number(sQuality.value),
+    quality:   videoQualitySlider.getVal(),
     videoDir:  sVideodir.value,
     ssFormat:  sSsfmt.value,
-    ssQuality: Number(sSsq.value),
+    ssQuality: ssQualitySlider.getVal(),
     ssDir:     sSsdir.value,
   });
   window.api.toggleSettings();
 });
-document.getElementById('close-settings-btn').addEventListener('click', () => {
-  window.api.toggleSettings();
-});
+document.getElementById('cancel-settings-btn').addEventListener('click', () => window.api.toggleSettings());
 
-// ── Shortcuts modal ───────────────────────────────────────────────────────────
-const shortcutsModal = document.getElementById('shortcuts-modal');
+// ── Shortcuts ─────────────────────────────────────────────────────────────────
+shortcutsBtn.addEventListener('click', () => window.api.toggleShortcuts());
+document.getElementById('close-shortcuts-btn').addEventListener('click', () => window.api.toggleShortcuts());
+
 window.api.on('shortcuts-state', open => {
-  shortcutsModal.classList.toggle('open', open);
-});
-shortcutsModal.addEventListener('click', e => {
-  if (e.target === shortcutsModal) window.api.toggleShortcuts();
+  shortcutsDrw.classList.toggle('open', open);
 });
 
-// ── Keyboard shortcuts (when bar / renderer has focus) ────────────────────────
+// ── Keyboard (when renderer/bar has focus) ────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const plain   = !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
   const cmdOnly = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
   if (plain) {
-    if (e.key === ' ')                     { e.preventDefault(); window.api.toggleScroll(); }
+    if (e.key === ' ')                        { e.preventDefault(); window.api.toggleScroll(); }
     else if (e.key === 'r' || e.key === 'R') { window.api.toggleRec(); }
     else if (e.key === 's' || e.key === 'S') { window.api.screenshot(); }
-    else if (e.key === 'Escape')           { window.api.toggleScroll(); /* stop only, handled in main */ }
+    else if (e.key === 'Escape') {
+      if (shortcutsDrw.classList.contains('open') || settingsDrw.classList.contains('open')) {
+        window.api.closePanel();
+      } else {
+        if (isScrolling) window.api.toggleScroll();
+        if (isRecording) window.api.toggleRec();
+      }
+    }
   }
   if (cmdOnly && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); window.api.refresh(); }
   if (cmdOnly && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); window.api.toggleShortcuts(); }
-  if (e.key === 'Escape') { window.api.toggleShortcuts(); }
 });
 
-// ── Errors / misc ─────────────────────────────────────────────────────────────
+// ── Errors ────────────────────────────────────────────────────────────────────
 window.api.on('error', msg => showToast(msg, true));
 window.api.on('ffmpeg-missing', () => {
   showToast('ffmpeg not found — install via: brew install ffmpeg', true);

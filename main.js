@@ -29,8 +29,8 @@ app.name = 'mesh3d';
 const ICON_PATH = path.join(__dirname, 'build', 'mesh3d-logo-icon_1-iOS-Default-1024x1024@1x.png');
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const BAR_H      = 54;
-const SETTINGS_H = 360;
+const BAR_H        = 54;
+const BOTTOM_H     = 68;   // bottom bar (60px) + bottom margin (8px)
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 
 const CODEC_MAP = {
@@ -167,6 +167,8 @@ async function nextBrowserTab() {
 let win, view;
 let settingsOpen  = false;
 let shortcutsOpen = false;
+let viewFrozen    = false;
+let frozenBounds  = null;
 let recording    = false;
 let paused       = false;
 let scrolling    = false;
@@ -174,6 +176,8 @@ let ffProc       = null;
 let ffLogStream  = null;
 let recTimerInt  = null;
 let recStart     = null;
+let pausedAt     = null;
+let totalPausedMs = 0;
 let currentUrl   = '';
 let screencastOn = false;
 let frameCount   = 0;
@@ -186,10 +190,10 @@ function create() {
 
   win = new BrowserWindow({
     width:  Math.min(cfg.width, sw),
-    height: Math.min(cfg.height + BAR_H, sh),
+    height: Math.min(cfg.height + BAR_H + BOTTOM_H, sh),
     minWidth:  400,
     minHeight: 200,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: '#08090d',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -217,8 +221,18 @@ function create() {
 
   syncBounds();
   win.loadFile('renderer.html');
-  // BrowserView follows window when resized
-  win.on('resize', syncBounds);
+  // BrowserView follows window when resized.
+  // If a drawer overlay is open, close it first (resize invalidates the frozen bounds).
+  win.on('resize', () => {
+    if (viewFrozen) {
+      settingsOpen  = false;
+      shortcutsOpen = false;
+      notify('settings-state',  false);
+      notify('shortcuts-state', false);
+      restoreView();
+    }
+    syncBounds();
+  });
   win.on('closed', () => { win = null; });
   Menu.setApplicationMenu(null);
 
@@ -232,11 +246,11 @@ function create() {
 // filling the remaining space. The configured resolution is the OUTPUT size.
 function syncBounds() {
   if (!win || !view) return;
+  if (viewFrozen) return; // don't move BrowserView while a drawer overlay is open
 
   const [winW, winH] = win.getSize();
-  const topH  = BAR_H + (settingsOpen ? SETTINGS_H : 0);
   const availW = winW;
-  const availH = Math.max(winH - topH, 100);
+  const availH = Math.max(winH - BAR_H - BOTTOM_H, 100);
 
   const cfgRatio   = cfg.width / cfg.height;
   const availRatio = availW / availH;
@@ -251,7 +265,7 @@ function syncBounds() {
   }
 
   const x = Math.round((availW - viewW) / 2);
-  const y = topH + Math.round((availH - viewH) / 2);
+  const y = BAR_H + Math.round((availH - viewH) / 2);
   view.setBounds({ x, y, width: viewW, height: viewH });
   // Only apply emulation if a page has been loaded (not on startup)
   if (currentUrl) applyDeviceEmulation();
@@ -279,6 +293,44 @@ function applyDeviceEmulation() {
       scale,
     });
   } catch {}
+}
+
+// ─── Freeze-frame overlay helpers ────────────────────────────────────────────
+// Capture the current BrowserView into a PNG data-URL, send it to the renderer
+// as a frozen background image, then hide the BrowserView so HTML overlays
+// (settings / shortcuts drawers) can appear on top without z-index fights.
+async function freezeView() {
+  if (viewFrozen || !view) return;
+  const bounds = view.getBounds();
+  if (!bounds.width || !bounds.height) return;
+  try {
+    const img = await view.webContents.capturePage();
+    if (img.isEmpty()) return;
+    const dataUrl = 'data:image/png;base64,' + img.toPNG().toString('base64');
+    frozenBounds = { ...bounds };
+    viewFrozen   = true;
+    notify('frozen-frame', { dataUrl, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height });
+    // Hide BrowserView AFTER the renderer has the frame so there's no flash
+    view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  } catch (e) {
+    console.error('[mesh3d] freezeView failed:', e.message);
+  }
+}
+
+// Restore the BrowserView to its previous position, then tell the renderer to
+// remove the frozen frame. Restore bounds BEFORE notifying so the live view is
+// already showing when the drawer animates out — no flash of blank background.
+function restoreView() {
+  if (!viewFrozen || !view) return;
+  viewFrozen = false;
+  if (frozenBounds) {
+    view.setBounds(frozenBounds);
+    frozenBounds = null;
+    if (currentUrl) applyDeviceEmulation();
+  } else {
+    syncBounds();
+  }
+  notify('clear-frame', null);
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
@@ -339,11 +391,10 @@ async function pngToWebP(pngBuf, quality) {
 async function screenshot() {
   if (!view) return;
   try {
-    const topH = BAR_H + (settingsOpen ? SETTINGS_H : 0);
     if (!recording) {
       // Disable device emulation first so content fills the view naturally
       try { view.webContents.disableDeviceEmulation(); } catch {}
-      view.setBounds({ x: 0, y: topH, width: cfg.width, height: cfg.height });
+      view.setBounds({ x: 0, y: BAR_H, width: cfg.width, height: cfg.height });
     }
 
     const raw = await view.webContents.capturePage();
@@ -426,6 +477,10 @@ async function startRec() {
     ffArgs.push('-tag:v', 'hvc1');
   }
 
+  // Scale to cfg resolution — CDP frames match the view's physical bounds, which
+  // shrink when the window is small. This guarantees output is always cfg size.
+  ffArgs.push('-vf', `scale=${cfg.width}:${cfg.height}:flags=lanczos`);
+
   ffArgs.push('-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart', dest);
 
   ffProc = spawn(ffmpegBin, ffArgs);
@@ -445,11 +500,13 @@ async function startRec() {
     }
   });
 
-  recording  = true;
-  paused     = false;
-  recStart   = Date.now();
-  frameCount = 0;
-  lastJpeg   = null;
+  recording     = true;
+  paused        = false;
+  recStart      = Date.now();
+  pausedAt      = null;
+  totalPausedMs = 0;
+  frameCount    = 0;
+  lastJpeg      = null;
 
   try {
     const wc = view.webContents;
@@ -495,7 +552,8 @@ async function startRec() {
   writeTimer = setTimeout(emit, frameMs);
 
   recTimerInt = setInterval(() => {
-    notify('rec-timer', Math.floor((Date.now() - recStart) / 1000));
+    const activePausedMs = pausedAt ? (Date.now() - pausedAt) : 0;
+    notify('rec-timer', Math.floor((Date.now() - recStart - totalPausedMs - activePausedMs) / 1000));
   }, 500);
 
   notify('rec-state', { recording: true, paused: false });
@@ -521,6 +579,12 @@ function onCdpMessage(_event, method, params) {
 function pauseRec() {
   if (!recording) return;
   paused = !paused;
+  if (paused) {
+    pausedAt = Date.now();
+  } else if (pausedAt) {
+    totalPausedMs += Date.now() - pausedAt;
+    pausedAt = null;
+  }
   notify('rec-state', { recording: true, paused });
 }
 
@@ -624,21 +688,31 @@ function refresh() {
   view.webContents.once('did-finish-load', hideScrollbars);
 }
 
-// ─── Settings panel ───────────────────────────────────────────────────────────
-function toggleSettings() {
+// ─── Settings overlay ────────────────────────────────────────────────────────
+// Opening: freeze the live view, slide drawer in over the frozen frame.
+// Closing: restore live view (bounds first), then let renderer animate out.
+// Swapping panels (shortcuts → settings): view is already frozen, skip re-capture.
+async function toggleSettings() {
   settingsOpen = !settingsOpen;
-  syncBounds();
+  if (settingsOpen) {
+    const wasAlreadyFrozen = viewFrozen;
+    if (shortcutsOpen) { shortcutsOpen = false; notify('shortcuts-state', false); }
+    if (!wasAlreadyFrozen) await freezeView();
+  } else {
+    if (!shortcutsOpen) restoreView();
+  }
   notify('settings-state', settingsOpen);
 }
 
-// ─── Shortcuts modal ──────────────────────────────────────────────────────────
-// Hides the BrowserView so the full-window overlay in renderer HTML is visible.
-function toggleShortcuts() {
+// ─── Shortcuts overlay ───────────────────────────────────────────────────────
+async function toggleShortcuts() {
   shortcutsOpen = !shortcutsOpen;
   if (shortcutsOpen) {
-    view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    const wasAlreadyFrozen = viewFrozen;
+    if (settingsOpen) { settingsOpen = false; notify('settings-state', false); }
+    if (!wasAlreadyFrozen) await freezeView();
   } else {
-    syncBounds();
+    if (!settingsOpen) restoreView();
   }
   notify('shortcuts-state', shortcutsOpen);
 }
@@ -652,6 +726,13 @@ ipcMain.on('toggle-scroll',   ()       => toggleScroll());
 ipcMain.on('refresh',         ()       => refresh());
 ipcMain.on('toggle-settings',   ()       => toggleSettings());
 ipcMain.on('toggle-shortcuts',  ()       => toggleShortcuts());
+ipcMain.on('panel-close',       ()       => {
+  settingsOpen  = false;
+  shortcutsOpen = false;
+  notify('settings-state',  false);
+  notify('shortcuts-state', false);
+  restoreView();
+});
 ipcMain.on('open-path',       (_, p)   => shell.showItemInFolder(p));
 ipcMain.on('grab-url',        ()       => grabBrowserUrl());
 ipcMain.on('next-tab',        ()       => nextBrowserTab());
